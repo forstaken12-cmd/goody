@@ -92,10 +92,38 @@
     su.hidden = which !== 'signup';
     li.hidden = which !== 'login';
     fo.hidden = which !== 'forgot';
+    const showOauth = which !== 'forgot';
+    ['oauth-stack', 'oauth-legal', 'oauth-or'].forEach((id) => {
+      if ($(id)) $(id).hidden = !showOauth;
+    });
     $('auth-title').textContent = which === 'login' ? 'Welcome back' : (which === 'forgot' ? 'Reset password' : 'Goody');
     $('auth-lead').textContent = which === 'login'
       ? 'Sign in to see your points.'
       : (which === 'forgot' ? 'We’ll email a link if that account exists.' : 'Do little tasks. Get points. Cash out when you’re ready.');
+  }
+
+  function applyOauthButtons(oauth) {
+    oauth = oauth || {};
+    [['btn-google', 'oauth-google-item', !!oauth.google],
+     ['btn-apple', 'oauth-apple-item', !!oauth.apple]].forEach(([id, wrapId, on]) => {
+      const b = $(id);
+      if (!b) return;
+      b.disabled = !on;
+      b.setAttribute('aria-disabled', on ? 'false' : 'true');
+      b.classList.toggle('is-soon', !on);
+      if ($(wrapId)) $(wrapId).classList.toggle('is-soon', !on);
+    });
+  }
+
+  function startOauth(provider) {
+    const err = $('oauth-err');
+    if (err) err.textContent = '';
+    if (!$('su-age') || !$('su-age').checked || !$('su-agree') || !$('su-agree').checked) {
+      if (err) err.textContent = 'Please confirm you are 18 or older and agree to the Terms and Privacy Policy.';
+      return;
+    }
+    const q = new URLSearchParams({ agree: '1', age: '1', fingerprint: fingerprint() });
+    window.location.href = '/api/auth/' + provider + '/start?' + q.toString();
   }
 
   function hideAuth() {
@@ -523,6 +551,10 @@
     $('account-overlay').classList.remove('show');
     showAuth('login');
   });
+  const gBtn = $('btn-google');
+  const aBtn = $('btn-apple');
+  if (gBtn) gBtn.addEventListener('click', () => { if (!gBtn.disabled) startOauth('google'); });
+  if (aBtn) aBtn.addEventListener('click', () => { if (!aBtn.disabled) startOauth('apple'); });
   $('go-login').addEventListener('click', () => showAuth('login'));
   $('go-signup').addEventListener('click', () => showAuth('signup'));
   $('go-forgot').addEventListener('click', () => showAuth('forgot'));
@@ -690,9 +722,14 @@
       const cfg = await fetch('/api/config', { credentials: 'same-origin' }).then((r) => r.json());
       if ($('welcome-demo')) $('welcome-demo').hidden = !cfg.demo;
       if ($('demo-badge') && !signedIn) $('demo-badge').hidden = !cfg.demo;
+      applyOauthButtons(cfg.oauth);
     } catch (e) { /* ignore */ }
     const path = location.pathname;
     const params = new URLSearchParams(location.search);
+    if (params.get('authError') && $('oauth-err')) {
+      $('oauth-err').textContent = params.get('authError');
+      if (history.replaceState) history.replaceState({}, '', path || '/');
+    }
     if (path === '/reset' && params.get('token')) {
       $('reset-overlay').classList.add('show');
     }

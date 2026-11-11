@@ -224,7 +224,9 @@ function publicUser(user) {
     publicId: user.public_id,
     email: user.email,
     emailVerified: !!user.email_verified_at,
-    firstCashoutDone: !!user.first_cashout_at
+    firstCashoutDone: !!user.first_cashout_at,
+    googleLinked: !!user.google_id,
+    appleLinked: !!user.apple_id
   };
 }
 
@@ -249,6 +251,85 @@ function requireUser(db) {
       next(e);
     }
   };
+}
+
+
+async function findByGoogleId(db, sub) {
+  if (!sub) return undefined;
+  return db.get('SELECT * FROM users WHERE google_id = ?', [sub]);
+}
+
+async function findByAppleId(db, sub) {
+  if (!sub) return undefined;
+  return db.get('SELECT * FROM users WHERE apple_id = ?', [sub]);
+}
+
+/**
+ * Sign in or create an account from a verified Google or Apple identity.
+ * Links to an existing account when the verified email already belongs to one.
+ */
+async function loginWithOauth(db, { provider, subject, email, emailVerified, agreeTerms, ageConfirm, fingerprint }, req) {
+  if (provider !== 'google' && provider !== 'apple') {
+    throw Object.assign(new Error('Unknown sign-in method.'), { http: 400 });
+  }
+  if (!subject) throw Object.assign(new Error('Sign-in could not be checked. Please try again.'), { http: 401 });
+  const col = provider === 'google' ? 'google_id' : 'apple_id';
+  let user = provider === 'google'
+    ? await findByGoogleId(db, subject)
+    : await findByAppleId(db, subject);
+
+  const e = normalizeEmail(email || '');
+
+  if (!user && e) {
+    const byEmail = await findByEmail(db, e);
+    if (byEmail) {
+      if (!emailVerified && !byEmail.email_verified_at) {
+        throw Object.assign(new Error('That email already has an account. Sign in with your password, then you can link this sign-in.'), { http: 409 });
+      }
+      if (byEmail[col] && byEmail[col] !== subject) {
+        throw Object.assign(new Error('That email is already used on another account.'), { http: 409 });
+      }
+      const fp = noteFingerprint(byEmail, fingerprint);
+      const now = isoNow();
+      await db.run(
+        `UPDATE users SET ${col} = ?, email_verified_at = COALESCE(email_verified_at, ?), device_fingerprint = ?, device_note = ?, last_seen_at = ? WHERE id = ?`,
+        [subject, emailVerified ? now : null, fp.device_fingerprint || null, fp.device_note || null, now, byEmail.id]
+      );
+      user = await findById(db, byEmail.id);
+    }
+  }
+
+  if (!user) {
+    if (!agreeTerms || !ageConfirm) {
+      throw Object.assign(new Error('Please confirm you are 18 or older and agree to the Terms and Privacy Policy.'), { http: 400, code: 'NEED_AGREE' });
+    }
+    const now = isoNow();
+    const publicId = 'u_' + crypto.randomBytes(8).toString('hex');
+    const fp = noteFingerprint(null, fingerprint);
+    const r = await db.run(
+      `INSERT INTO users (public_id, email, password_hash, email_verified_at, agreed_terms_at, age_confirmed, device_fingerprint, device_note, google_id, apple_id, created_at, last_seen_at)
+       VALUES (?, ?, NULL, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
+      [
+        publicId,
+        e || null,
+        emailVerified ? now : null,
+        now,
+        fp.device_fingerprint || null,
+        fp.device_note || null,
+        provider === 'google' ? subject : null,
+        provider === 'apple' ? subject : null,
+        now,
+        now
+      ]
+    );
+    user = await db.get('SELECT * FROM users WHERE id = ?', [r.lastInsertRowid]);
+    await db.run('INSERT INTO streaks (user_id, current, best, last_date) VALUES (?, 0, 0, NULL)', [user.id]);
+  } else {
+    await touchUser(db, user.id);
+  }
+
+  const session = await createSession(db, user.id, req);
+  return { user: await findById(db, user.id), session, linked: true };
 }
 
 module.exports = {
@@ -277,6 +358,9 @@ module.exports = {
   markVerified,
   publicUser,
   requireUser,
+  findByGoogleId,
+  findByAppleId,
+  loginWithOauth,
   hashToken,
   VERIFY_HOURS,
   RESET_HOURS

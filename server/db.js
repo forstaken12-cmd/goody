@@ -38,11 +38,12 @@ CREATE TABLE IF NOT EXISTS users (
   device_fingerprint TEXT,
   device_note TEXT,
   device_id TEXT,
+  google_id TEXT UNIQUE,
+  apple_id TEXT UNIQUE,
   created_at TEXT NOT NULL,
   first_cashout_at TEXT,
   last_seen_at TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
@@ -53,6 +54,17 @@ CREATE TABLE IF NOT EXISTS sessions (
   ip TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+CREATE TABLE IF NOT EXISTS oauth_states (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  nonce TEXT NOT NULL,
+  agree INTEGER NOT NULL DEFAULT 0,
+  age INTEGER NOT NULL DEFAULT 0,
+  fingerprint TEXT,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS email_tokens (
   id ${id},
@@ -149,7 +161,8 @@ const SAFE_TABLES = {
   streaks: 1,
   daily_goals: 1,
   offer_progress: 1,
-  admin_sessions: 1
+  admin_sessions: 1,
+  oauth_states: 1
 };
 
 async function columnInfo(db, table) {
@@ -196,6 +209,8 @@ async function rebuildSqliteUsers(db) {
       device_fingerprint TEXT,
       device_note TEXT,
       device_id TEXT,
+      google_id TEXT UNIQUE,
+      apple_id TEXT UNIQUE,
       created_at TEXT NOT NULL,
       first_cashout_at TEXT,
       last_seen_at TEXT
@@ -226,6 +241,8 @@ async function migrate(db) {
     ['users', 'age_confirmed', 'INTEGER DEFAULT 0'],
     ['users', 'device_fingerprint', 'TEXT'],
     ['users', 'device_note', 'TEXT'],
+    ['users', 'google_id', 'TEXT'],
+    ['users', 'apple_id', 'TEXT'],
     ['cashouts', 'payout_provider', 'TEXT'],
     ['cashouts', 'payout_mode', 'TEXT'],
     ['cashouts', 'payout_ref', 'TEXT'],
@@ -234,6 +251,9 @@ async function migrate(db) {
   for (const [table, name, typ] of extras) {
     await addColumnIfMissing(db, table, name, typ);
   }
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
+  await db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)');
+  await db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_apple_id ON users(apple_id)');
 }
 
 function wrapSqlite(db, persistPath) {

@@ -14,6 +14,7 @@ const { createSimulator } = require('./demo/simulator');
 const goals = require('./lib/goals');
 const { createMailer } = require('./lib/mail');
 const payouts = require('./lib/payouts');
+const oauth = require('./lib/oauth');
 
 const PUBLIC = path.join(__dirname, '..', 'public');
 
@@ -148,7 +149,8 @@ async function createApp(opts) {
       demo: cfg.demoPartner,
       db: db.dialect === 'pg' ? 'postgres' : 'sqlite',
       mail: mailer.enabled,
-      payouts: payoutStatus()
+      payouts: payoutStatus(),
+      oauth: oauth.providersStatus(cfg)
     });
   });
 
@@ -170,9 +172,126 @@ async function createApp(opts) {
       mins: cfg.mins,
       tz: cfg.tz,
       mailEnabled: mailer.enabled,
-      minAge: 18
+      minAge: 18,
+      oauth: oauth.providersStatus(cfg)
     });
   });
+
+  function truthyFlag(v) {
+    return v === true || v === 1 || v === '1' || v === 'true' || v === 'on' || v === 'yes';
+  }
+
+  function oauthFail(res, message) {
+    const q = new URLSearchParams({
+      authError: message || 'Sign-in could not be finished. Please try again.'
+    });
+    res.redirect(302, '/?' + q.toString());
+  }
+
+  async function startOauth(req, res, provider) {
+    try {
+      const enabled = provider === 'google' ? oauth.googleEnabled(cfg) : oauth.appleEnabled(cfg);
+      if (!enabled) {
+        res.status(503).json({ error: 'That sign-in method is not set up yet.' });
+        return;
+      }
+      const q = req.query || {};
+      const agree = truthyFlag(q.agree);
+      const age = truthyFlag(q.age);
+      if (!agree || !age) {
+        res.status(400).json({ error: 'Please confirm you are 18 or older and agree to the Terms and Privacy Policy.' });
+        return;
+      }
+      const { state, nonce } = await oauth.createOauthState(db, {
+        provider,
+        agree,
+        age,
+        fingerprint: q.fingerprint || ''
+      });
+      const url = provider === 'google'
+        ? oauth.buildGoogleAuthUrl(cfg, { state, nonce })
+        : oauth.buildAppleAuthUrl(cfg, { state, nonce });
+      res.redirect(302, url);
+    } catch (e) {
+      sendError(res, e);
+    }
+  }
+
+  async function finishOauth(req, res, provider, params) {
+    const src = params || {};
+    if (src.error) {
+      oauthFail(res, 'Sign-in was cancelled.');
+      return;
+    }
+    try {
+      const row = await oauth.takeOauthState(db, src.state, provider);
+      if (!row) {
+        oauthFail(res, 'That sign-in link expired. Please try again.');
+        return;
+      }
+      if (!src.code && !src.id_token) {
+        oauthFail(res, 'Sign-in could not be finished. Please try again.');
+        return;
+      }
+      let payload;
+      if (provider === 'google') {
+        const tokens = await oauth.exchangeGoogleCode(cfg, src.code, { fetchFn: opts.oauthFetch });
+        payload = await oauth.verifyGoogleIdToken(tokens.id_token, {
+          audience: cfg.googleClientId,
+          nonce: row.nonce,
+          jwks: opts.oauthGoogleJwks
+        });
+      } else {
+        let token = src.id_token;
+        if (src.code) {
+          const tokens = await oauth.exchangeAppleCode(cfg, src.code, {
+            fetchFn: opts.oauthFetch,
+            clientSecret: opts.oauthAppleClientSecret
+          });
+          token = tokens.id_token || token;
+        }
+        if (!token) {
+          oauthFail(res, 'Sign-in could not be finished. Please try again.');
+          return;
+        }
+        payload = await oauth.verifyAppleIdToken(token, {
+          audience: cfg.appleClientId,
+          nonce: row.nonce,
+          jwks: opts.oauthAppleJwks
+        });
+      }
+      const claims = oauth.claimsFromPayload(provider, payload);
+      const { session } = await auth.loginWithOauth(db, {
+        ...claims,
+        agreeTerms: !!Number(row.agree),
+        ageConfirm: !!Number(row.age),
+        fingerprint: row.fingerprint
+      }, req);
+      auth.setSessionCookie(res, session, cfg);
+      res.redirect(302, '/');
+    } catch (e) {
+      oauthFail(res, e.message || 'Sign-in could not be finished. Please try again.');
+    }
+  }
+
+  app.get('/api/auth/providers', (_req, res) => {
+    res.json(oauth.providersStatus(cfg));
+  });
+
+  app.get('/api/auth/google/start', loginLimit, (req, res) => startOauth(req, res, 'google'));
+  app.get('/api/auth/apple/start', loginLimit, (req, res) => startOauth(req, res, 'apple'));
+  app.get('/api/auth/google/callback', loginLimit, (req, res) => finishOauth(req, res, 'google', req.query || {}));
+  app.post('/api/auth/apple/callback', loginLimit, (req, res) => {
+    const body = req.body || {};
+    finishOauth(req, res, 'apple', {
+      code: body.code,
+      id_token: body.id_token,
+      state: body.state,
+      error: body.error
+    });
+  });
+  // Some Apple setups can be switched to a query callback in tests.
+  app.get('/api/auth/apple/callback', loginLimit, (req, res) => finishOauth(req, res, 'apple', req.query || {}));
 
   function verifyLink(raw) {
     return cfg.publicBaseUrl.replace(/\/$/, '') + '/verify?token=' + encodeURIComponent(raw);
@@ -314,6 +433,8 @@ async function createApp(opts) {
       email: user.email,
       emailVerified: !!user.email_verified_at,
       firstCashoutDone: !!user.first_cashout_at,
+      googleLinked: !!user.google_id,
+      appleLinked: !!user.apple_id,
       firstCashoutUsd: cfg.firstCashoutUsd,
       balance: bal,
       availableUsd: ptsToUsd(bal.available, cfg.pointUsd),
@@ -641,7 +762,16 @@ async function createApp(opts) {
   });
 
   app.use(express.static(PUBLIC));
-  app.get('/terms', (_req, res) => res.sendFile(path.join(PUBLIC, 'terms.html')));
+    app.get('/.well-known/apple-developer-domain-association.txt', (_req, res) => {
+    const body = cfg.appleDomainAssociation;
+    if (!body) {
+      res.status(404).type('text/plain').send('Not found');
+      return;
+    }
+    res.type('text/plain').send(body);
+  });
+
+app.get('/terms', (_req, res) => res.sendFile(path.join(PUBLIC, 'terms.html')));
   app.get('/privacy', (_req, res) => res.sendFile(path.join(PUBLIC, 'privacy.html')));
   app.get('/admin', (_req, res) => res.sendFile(path.join(PUBLIC, 'admin.html')));
   app.use((req, res, next) => {

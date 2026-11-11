@@ -49,8 +49,16 @@ const config = {
   tremendousFunding: process.env.TREMENDOUS_FUNDING_SOURCE_ID || '',
   tremendousEnv: process.env.TREMENDOUS_ENV || 'testflight',
   zbdApiKey: process.env.ZBD_API_KEY || process.env.ZEBEDEE_API_KEY || '',
-  btcUsd: num('BTC_USD', 0)
+  btcUsd: num('BTC_USD', 0),
+  googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+  appleClientId: process.env.APPLE_CLIENT_ID || '',
+  appleTeamId: process.env.APPLE_TEAM_ID || '',
+  appleKeyId: process.env.APPLE_KEY_ID || '',
+  applePrivateKey: process.env.APPLE_PRIVATE_KEY || '',
+  appleDomainAssociation: process.env.APPLE_DOMAIN_ASSOCIATION || ''
 };
+
 
 /**
  * Partner postback configs.

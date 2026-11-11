@@ -6,6 +6,8 @@ This is the real project (a Node server + a phone-sized web app). The built-in *
 
 The live site is [https://goody-dfi5.onrender.com](https://goody-dfi5.onrender.com). It auto-deploys from the `main` branch of this repo.
 
+Setup for Google and Apple sign-in is in [AUTH-SETUP.md](AUTH-SETUP.md).
+
 ## How to run
 
 You need Node.js 20 or later.
@@ -34,7 +36,7 @@ Stop the server with Ctrl+C.
 
 ## How it works
 
-1. People create an account with email and password, agree to the Terms, and confirm they are 18 or older. Passwords are hashed. Sign-in uses an httpOnly session cookie.
+1. People can sign in with Google or Apple when those keys are set, or with email and password. They agree to the Terms and confirm they are 18 or older. Passwords are hashed. Sign-in uses an httpOnly session cookie. Google and Apple accounts are linked when the email is verified. See AUTH-SETUP.md.
 2. We send an email to confirm the address when an email provider is configured. If it is not, the server logs the link and the app shows a friendly note. Password reset works the same way.
 3. Offers come from partners. In demo mode, the app serves a fake catalog and **signs postbacks** the same way a real partner would.
 4. When a task is finished, the partner calls `GET` or `POST /postback/:partner` with a user id, a transaction id, an amount in USD, a status, and a signature.
@@ -63,6 +65,7 @@ See **PARTNERS.md** for who to apply to, what they usually ask for, and the exac
 **Works now:**
 
 - Email + password accounts, session cookies, email confirmation and password reset (pluggable mail)
+- Continue with Google and Continue with Apple (real server-side OAuth / OpenID Connect). Buttons stay on “Coming soon” until the keys below are set. Setup steps are in AUTH-SETUP.md
 - Postgres when `DATABASE_URL` is valid, sql.js fallback otherwise
 - Terms of Service and Privacy Policy (templates — have a lawyer review them)
 - 18+ age rule, agreement required at signup
@@ -90,7 +93,9 @@ See **PARTNERS.md** for who to apply to, what they usually ask for, and the exac
 Never put real secrets in git. Set these in the Render dashboard (or your `.env` locally):
 
 - `DATABASE_URL` — a real `postgres://` or `postgresql://` connection string (if this is a placeholder, the app falls back to sql.js)
-- `PUBLIC_BASE_URL` — `https://goody-dfi5.onrender.com` (recommended)
+- `PUBLIC_BASE_URL` — `https://goody-dfi5.onrender.com` (recommended; required for Google/Apple redirect URLs)
+- Google sign-in: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (see AUTH-SETUP.md)
+- Apple sign-in: `APPLE_CLIENT_ID` (Services ID), `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`. Sign in with Apple needs a paid Apple Developer Program membership ($99 USD/year; confirm on Apple’s site). Optional domain-verify file: `APPLE_DOMAIN_ASSOCIATION`
 - `MAIL_FROM` and either `SMTP_URL` / `SMTP_HOST`+`SMTP_USER`+`SMTP_PASS`, or `SENDGRID_API_KEY`
 - Payout keys, when you are ready: `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_ENV`; `TREMENDOUS_API_KEY`, `TREMENDOUS_CAMPAIGN_ID`, `TREMENDOUS_ENV`; `ZBD_API_KEY` or `ZEBEDEE_API_KEY`, plus `BTC_USD`
 - Partner secrets, when you are approved: `BITLABS_SECRET`, `ADGEM_POSTBACK_KEY`, `CPX_SECURE_HASH`, `TOROX_SECRET`, `LOOTABLY_POSTBACK_SECRET`, and later `AYET_SECRET` / `THEOREMREACH_SECRET` after you confirm official docs
