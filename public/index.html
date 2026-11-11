@@ -188,8 +188,8 @@
         </div>
       </div>
       <div class="oauth-legal" id="oauth-legal">
-        <label class="check"><input type="checkbox" id="su-age" /> I am 18 or older</label>
-        <label class="check"><input type="checkbox" id="su-agree" /> I agree to the <a href="/terms" target="_blank" rel="noopener">Terms</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a></label>
+        <label class="check"><input type="checkbox" id="su-age" /> <span>I am <span data-min-age>18</span> or older</span></label>
+        <label class="check"><input type="checkbox" id="su-agree" /> <span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a></span></label>
       </div>
       <div class="ts-box" id="ts-auth" hidden></div>
       <p class="oauth-or" id="oauth-or">or use your email</p>
@@ -225,6 +225,17 @@
         <button class="btn-block" type="submit">Send link</button>
         <p class="note center-note"><button type="button" class="linkish" id="fo-back">Back to sign in</button></p>
       </form>
+    </div>
+  </div>
+
+  <div class="overlay" id="agree-overlay">
+    <div class="modal left" id="agree-modal">
+      <h2 style="text-align:center">Quick update</h2>
+      <p>We changed our Terms. Tick both boxes to keep going.</p>
+      <label class="check"><input type="checkbox" id="ag-age" /> <span>I am <span data-min-age>18</span> or older</span></label>
+      <label class="check"><input type="checkbox" id="ag-agree" /> <span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a></span></label>
+      <p class="note err" id="ag-err"></p>
+      <button class="btn-block" id="ag-go">Keep going</button>
     </div>
   </div>
 

@@ -122,22 +122,38 @@ test('always-fail keys reject signup, login, and forgot', async () => {
   assert.equal(calls.length, 3);
 });
 
-test('OAuth start checks the token before redirecting to Google', async () => {
+test('Google start skips the quick check; Apple start keeps it', async () => {
   const calls = [];
-  const base = await start({ turnstileSiteKey: PASS_SITE, turnstileSecretKey: PASS_SECRET }, calls);
-  const noTok = await fetch(base + '/api/auth/google/start?agree=1&age=1', { redirect: 'manual' });
+  // Start only checks that Apple is set up; nothing is signed here.
+  const appleKey = 'not-a-real-key';
+  const base = await start({
+    turnstileSiteKey: PASS_SITE, turnstileSecretKey: PASS_SECRET,
+    appleClientId: 'com.goody.test.web', appleTeamId: 'TEAM12TEST', appleKeyId: 'KEY12TEST', applePrivateKey: appleKey
+  }, calls);
+
+  // Google: no token needed, and siteverify is never called.
+  const g = await fetch(base + '/api/auth/google/start?agree=1&age=1', { redirect: 'manual' });
+  assert.equal(g.status, 302);
+  assert.match(g.headers.get('location'), /^https:\/\/accounts\.google\.com\//);
+  assert.equal(calls.length, 0);
+
+  // Apple: still needs the quick check.
+  const noTok = await fetch(base + '/api/auth/apple/start?agree=1&age=1', { redirect: 'manual' });
   assert.equal(noTok.status, 302);
   const back = new URL(noTok.headers.get('location'), base);
   assert.equal(back.pathname, '/');
   assert.equal(back.searchParams.get('authError'), 'Please finish the quick check.');
 
-  const ok = await fetch(base + '/api/auth/google/start?agree=1&age=1&turnstileToken=' + encodeURIComponent(DUMMY_TOKEN), { redirect: 'manual' });
+  const ok = await fetch(base + '/api/auth/apple/start?agree=1&age=1&turnstileToken=' + encodeURIComponent(DUMMY_TOKEN), { redirect: 'manual' });
   assert.equal(ok.status, 302);
-  assert.match(ok.headers.get('location'), /^https:\/\/accounts\.google\.com\//);
+  assert.match(ok.headers.get('location'), /^https:\/\/appleid\.apple\.com\//);
 
   const failCalls = [];
-  const failBase = await start({ turnstileSiteKey: FAIL_SITE, turnstileSecretKey: FAIL_SECRET }, failCalls);
-  const bad = await fetch(failBase + '/api/auth/google/start?agree=1&age=1&turnstileToken=' + encodeURIComponent(DUMMY_TOKEN), { redirect: 'manual' });
+  const failBase = await start({
+    turnstileSiteKey: FAIL_SITE, turnstileSecretKey: FAIL_SECRET,
+    appleClientId: 'com.goody.test.web', appleTeamId: 'TEAM12TEST', appleKeyId: 'KEY12TEST', applePrivateKey: appleKey
+  }, failCalls);
+  const bad = await fetch(failBase + '/api/auth/apple/start?agree=1&age=1&turnstileToken=' + encodeURIComponent(DUMMY_TOKEN), { redirect: 'manual' });
   assert.equal(new URL(bad.headers.get('location'), failBase).searchParams.get('authError'), 'Please finish the quick check.');
 });
 

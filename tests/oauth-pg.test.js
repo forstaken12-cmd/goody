@@ -128,13 +128,15 @@ after(() => {
 });
 
 test('loginWithOauth insert uses the same number of ? placeholders as values (pg conversion safe)', () => {
-  const sql = `INSERT INTO users (public_id, email, password_hash, email_verified_at, agreed_terms_at, age_confirmed, device_fingerprint, device_note, google_id, apple_id, created_at, last_seen_at)
-       VALUES (?, ?, NULL, ?, ?, 1, ?, ?, ?, ?, ?, ?)`;
+  const sql = `INSERT INTO users (public_id, email, password_hash, email_verified_at, agreed_terms_at, terms_version, age_confirmed, age_confirmed_min, device_fingerprint, device_note, google_id, apple_id, created_at, last_seen_at)
+       VALUES (?, ?, NULL, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`;
+  // Must match the insert in server/lib/auth.js loginWithOauth.
+  assert.ok(require('fs').readFileSync(require('path').join(__dirname, '../server/lib/auth.js'), 'utf8').includes(sql));
   const converted = convertPlaceholders(sql);
   const count = (sql.match(/\?/g) || []).length;
-  assert.equal(count, 10);
-  assert.equal((converted.match(/\$\d+/g) || []).length, 10);
-  assert.match(converted, /\$10/);
+  assert.equal(count, 12);
+  assert.equal((converted.match(/\$\d+/g) || []).length, 12);
+  assert.match(converted, /\$12/);
   assert.doesNotMatch(converted, /\?/);
   // wrapPostgres appends RETURNING id for the users table
   assert.match(sql, /INSERT\s+INTO\s+users/i);

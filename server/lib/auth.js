@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { isoNow } = require('./money');
+const policy = require('./policy');
 
 const BCRYPT_ROUNDS = 10;
 const SESSION_DAYS = 30;
@@ -162,8 +163,8 @@ async function signup(db, { email, password, agreeTerms, ageConfirm, fingerprint
   const e = normalizeEmail(email);
   if (!validEmail(e)) throw Object.assign(new Error('Enter a real-looking email.'), { http: 400 });
   if (!validPassword(password)) throw Object.assign(new Error('Use a password with at least 8 characters.'), { http: 400 });
-  if (!agreeTerms) throw Object.assign(new Error('Please agree to the Terms and Privacy Policy.'), { http: 400 });
-  if (!ageConfirm) throw Object.assign(new Error('You need to be 18 or older to use Goody.'), { http: 400 });
+  if (!agreeTerms) throw Object.assign(new Error('Please agree to the Terms and Privacy Policy.'), { http: 400, code: 'NEED_AGREE' });
+  if (!ageConfirm) throw Object.assign(new Error('You need to be ' + policy.MIN_AGE + ' or older to use Goody.'), { http: 400, code: 'NEED_AGREE' });
   const taken = await findByEmail(db, e);
   if (taken) throw Object.assign(new Error('That email already has an account. Try signing in.'), { http: 409 });
 
@@ -172,9 +173,9 @@ async function signup(db, { email, password, agreeTerms, ageConfirm, fingerprint
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   const fp = noteFingerprint(null, fingerprint);
   const r = await db.run(
-    `INSERT INTO users (public_id, email, password_hash, agreed_terms_at, age_confirmed, device_fingerprint, device_note, created_at, last_seen_at)
-     VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)`,
-    [publicId, e, passwordHash, now, fp.device_fingerprint || null, fp.device_note || null, now, now]
+    `INSERT INTO users (public_id, email, password_hash, agreed_terms_at, terms_version, age_confirmed, age_confirmed_min, device_fingerprint, device_note, created_at, last_seen_at)
+     VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
+    [publicId, e, passwordHash, now, policy.TERMS_VERSION, policy.MIN_AGE, fp.device_fingerprint || null, fp.device_note || null, now, now]
   );
   const user = await db.get('SELECT * FROM users WHERE id = ?', [r.lastInsertRowid]);
   await db.run('INSERT INTO streaks (user_id, current, best, last_date) VALUES (?, 0, 0, NULL)', [user.id]);
@@ -218,6 +219,15 @@ async function markVerified(db, userId) {
   return findById(db, userId);
 }
 
+/** Save that this person ticked "old enough" and "I agree" for the current Terms. */
+async function recordAgreement(db, userId) {
+  await db.run(
+    'UPDATE users SET agreed_terms_at = ?, terms_version = ?, age_confirmed = 1, age_confirmed_min = ? WHERE id = ?',
+    [isoNow(), policy.TERMS_VERSION, policy.MIN_AGE, userId]
+  );
+  return findById(db, userId);
+}
+
 function publicUser(user) {
   if (!user) return null;
   return {
@@ -226,7 +236,8 @@ function publicUser(user) {
     emailVerified: !!user.email_verified_at,
     firstCashoutDone: !!user.first_cashout_at,
     googleLinked: !!user.google_id,
-    appleLinked: !!user.apple_id
+    appleLinked: !!user.apple_id,
+    termsOk: policy.termsCurrent(user)
   };
 }
 
@@ -301,19 +312,21 @@ async function loginWithOauth(db, { provider, subject, email, emailVerified, agr
 
   if (!user) {
     if (!agreeTerms || !ageConfirm) {
-      throw Object.assign(new Error('Please confirm you are 18 or older and agree to the Terms and Privacy Policy.'), { http: 400, code: 'NEED_AGREE' });
+      throw Object.assign(new Error(policy.agreeMessage()), { http: 400, code: 'NEED_AGREE' });
     }
     const now = isoNow();
     const publicId = 'u_' + crypto.randomBytes(8).toString('hex');
     const fp = noteFingerprint(null, fingerprint);
     const r = await db.run(
-      `INSERT INTO users (public_id, email, password_hash, email_verified_at, agreed_terms_at, age_confirmed, device_fingerprint, device_note, google_id, apple_id, created_at, last_seen_at)
-       VALUES (?, ?, NULL, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO users (public_id, email, password_hash, email_verified_at, agreed_terms_at, terms_version, age_confirmed, age_confirmed_min, device_fingerprint, device_note, google_id, apple_id, created_at, last_seen_at)
+       VALUES (?, ?, NULL, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`,
       [
         publicId,
         e || null,
         emailVerified ? now : null,
         now,
+        policy.TERMS_VERSION,
+        policy.MIN_AGE,
         fp.device_fingerprint || null,
         fp.device_note || null,
         provider === 'google' ? subject : null,
@@ -325,6 +338,11 @@ async function loginWithOauth(db, { provider, subject, email, emailVerified, agr
     user = await db.get('SELECT * FROM users WHERE id = ?', [r.lastInsertRowid]);
     await db.run('INSERT INTO streaks (user_id, current, best, last_date) VALUES (?, 0, 0, NULL)', [user.id]);
   } else {
+    // Returning people never need the boxes again. If they ticked them anyway
+    // and their saved agreement is old (Terms version bump), save the new one.
+    if (agreeTerms && ageConfirm && !policy.termsCurrent(user)) {
+      await recordAgreement(db, user.id);
+    }
     await touchUser(db, user.id);
   }
 
@@ -333,6 +351,7 @@ async function loginWithOauth(db, { provider, subject, email, emailVerified, agr
 }
 
 module.exports = {
+  recordAgreement,
   newId,
   COOKIE,
   MIN_PASSWORD,

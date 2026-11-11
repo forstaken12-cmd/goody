@@ -17,6 +17,7 @@ const { createMailer, healthMail } = require('./lib/mail');
 const payouts = require('./lib/payouts');
 const oauth = require('./lib/oauth');
 const turnstile = require('./lib/turnstile');
+const policy = require('./lib/policy');
 
 const PUBLIC = path.join(__dirname, '..', 'public');
 
@@ -37,7 +38,8 @@ function injectContact(html, email) {
 
 function sendLegalPage(res, filename, cfg) {
   const html = fs.readFileSync(path.join(PUBLIC, filename), 'utf8');
-  res.type('html').send(injectContact(html, contactAddress(cfg)));
+  const withAge = String(html).split('{{MIN_AGE}}').join(String(policy.MIN_AGE));
+  res.type('html').send(injectContact(withAge, contactAddress(cfg)));
 }
 
 
@@ -84,7 +86,9 @@ function validDestination(method, dest) {
 }
 
 function sendError(res, e) {
-  res.status(e.http || 400).json({ error: e.message });
+  const body = { error: e.message };
+  if (e.code && /^[A-Z_]+$/.test(String(e.code))) body.code = e.code;
+  res.status(e.http || 400).json(body);
 }
 
 async function createApp(opts) {
@@ -196,7 +200,8 @@ async function createApp(opts) {
       mins: cfg.mins,
       tz: cfg.tz,
       mailEnabled: mailer.enabled,
-      minAge: 18,
+      minAge: policy.MIN_AGE,
+      termsVersion: policy.TERMS_VERSION,
       contactEmail: contactAddress(cfg),
       oauth: oauth.providersStatus(cfg),
       turnstileSiteKey: turnstile.turnstileEnabled(cfg) ? cfg.turnstileSiteKey : null
@@ -243,13 +248,13 @@ async function createApp(opts) {
         return;
       }
       const q = req.query || {};
-      const agree = truthyFlag(q.agree);
-      const age = truthyFlag(q.age);
-      if (!agree || !age) {
-        res.status(400).json({ error: 'Please confirm you are 18 or older and agree to the Terms and Privacy Policy.' });
-        return;
-      }
-      if (!(await captchaOk(req, res, { redirect: true }))) return;
+      // The boxes are optional here: returning people already agreed. New
+      // accounts are refused at the callback unless agree=1 and age=1 came along.
+      const agree = truthyFlag(q.agree) && truthyFlag(q.age);
+      const age = agree;
+      // Google sign-in skips the bot check (Google already checks people).
+      // Apple keeps it.
+      if (provider !== 'google' && !(await captchaOk(req, res, { redirect: true }))) return;
       const { state, nonce } = await oauth.createOauthState(db, {
         provider,
         agree,
@@ -478,6 +483,26 @@ async function createApp(opts) {
 
   const requireUser = auth.requireUser(db);
 
+  // Earning and cashing out need a saved agreement for the current Terms.
+  // Old accounts (or a TERMS_VERSION bump) tick the boxes once via /api/auth/agree.
+  function requireTerms(req, res, next) {
+    if (policy.termsCurrent(req.user)) return next();
+    res.status(403).json({ error: policy.agreeMessage(), code: 'NEED_AGREE' });
+  }
+
+  app.post('/api/auth/agree', sessionLimit, requireUser, async (req, res) => {
+    try {
+      const body = req.body || {};
+      if (!truthyFlag(body.agree) || !truthyFlag(body.age)) {
+        return res.status(400).json({ error: policy.agreeMessage(), code: 'NEED_AGREE' });
+      }
+      const user = await auth.recordAgreement(db, req.user.id);
+      res.json({ ok: true, user: auth.publicUser(user) });
+    } catch (e) {
+      sendError(res, e);
+    }
+  });
+
   async function mePayload(user) {
     const bal = await ledger.balanceOf(db, user.id);
     const streak = await goals.getStreak(db, user.id, cfg.tz);
@@ -489,6 +514,7 @@ async function createApp(opts) {
       firstCashoutDone: !!user.first_cashout_at,
       googleLinked: !!user.google_id,
       appleLinked: !!user.apple_id,
+      termsOk: policy.termsCurrent(user),
       firstCashoutUsd: cfg.firstCashoutUsd,
       balance: bal,
       availableUsd: ptsToUsd(bal.available, cfg.pointUsd),
@@ -525,7 +551,7 @@ async function createApp(opts) {
     res.json({ offer: offerView(o, cfg.sharePct, cfg.pointUsd), progress: prog || null });
   });
 
-  app.post('/api/offers/:id/start', requireUser, async (req, res) => {
+  app.post('/api/offers/:id/start', requireUser, requireTerms, async (req, res) => {
     if (!cfg.demoPartner) return res.status(403).json({ error: 'Demo partner is off. Real offerwalls will start from their own pages.' });
     const o = findOffer(req.params.id);
     if (!o) return res.status(404).json({ error: 'Offer not found' });
@@ -542,7 +568,7 @@ async function createApp(opts) {
     }
   });
 
-  app.post('/api/offers/:id/play', requireUser, async (req, res) => {
+  app.post('/api/offers/:id/play', requireUser, requireTerms, async (req, res) => {
     if (!cfg.demoPartner) return res.status(403).json({ error: 'Demo partner is off.' });
     const o = findOffer(req.params.id);
     if (!o) return res.status(404).json({ error: 'Offer not found' });
@@ -598,7 +624,7 @@ async function createApp(opts) {
     }
   });
 
-  app.post('/api/cashout', requireUser, cashLimit, async (req, res) => {
+  app.post('/api/cashout', requireUser, requireTerms, cashLimit, async (req, res) => {
     try {
       if (!req.user.email_verified_at) {
         return res.status(403).json({ error: 'Please confirm your email before you cash out.' });

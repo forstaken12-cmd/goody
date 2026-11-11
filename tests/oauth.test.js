@@ -186,9 +186,10 @@ test('Apple client-secret JWT uses ES256, team id, key id, and Services ID', asy
   assert.equal(payload.sub, 'com.goody.test.web');
 });
 
-test('start requires age and terms, then redirects to the provider', async () => {
-  const bad = await fetch(enabledBase + '/api/auth/google/start', { redirect: 'manual' });
-  assert.equal(bad.status, 400);
+test('start redirects to the provider (boxes are checked at the callback for new accounts)', async () => {
+  const noBoxes = await fetch(enabledBase + '/api/auth/google/start', { redirect: 'manual' });
+  assert.equal(noBoxes.status, 302);
+  assert.match(noBoxes.headers.get('location'), /^https:\/\/accounts\.google\.com\//);
   const res = await fetch(enabledBase + '/api/auth/google/start?agree=1&age=1', { redirect: 'manual' });
   assert.equal(res.status, 302);
   const loc = new URL(res.headers.get('location'));

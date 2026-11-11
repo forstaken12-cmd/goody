@@ -75,6 +75,9 @@
       err.data = data;
       throw err;
     }
+    if (res.status === 403 && data.code === 'NEED_AGREE' && signedIn && $('agree-overlay')) {
+      $('agree-overlay').classList.add('show');
+    }
     if (!res.ok) {
       const err = new Error(data.error || 'Something went wrong');
       err.status = res.status;
@@ -96,11 +99,40 @@
     ['oauth-stack', 'oauth-legal', 'oauth-or'].forEach((id) => {
       if ($(id)) $(id).hidden = !showOauth;
     });
+    // Returning device on the sign-in screen: no boxes to tick.
+    if ($('oauth-legal') && which === 'login' && knownAgreed()) $('oauth-legal').hidden = true;
     if ($('ts-auth')) $('ts-auth').hidden = !showOauth || !turnstileSiteKey;
     $('auth-title').textContent = which === 'login' ? 'Welcome back' : (which === 'forgot' ? 'Reset password' : 'Goody');
     $('auth-lead').textContent = which === 'login'
       ? 'Sign in to see your points.'
       : (which === 'forgot' ? 'We’ll email a link if that account exists.' : 'Do little tasks. Get points. Cash out when you’re ready.');
+  }
+
+  /* One-time agreement. After someone ticks the boxes once, this device
+     remembers it, so their next Google sign-in needs no ticks. The server
+     still refuses brand-new accounts without the boxes. */
+  let minAge = 18;
+  let termsVersion = '';
+  const AGREED_KEY = 'goody-agreed';
+  function knownAgreed() {
+    try { return !!termsVersion && localStorage.getItem(AGREED_KEY) === termsVersion; } catch (e) { return false; }
+  }
+  function rememberAgreed() {
+    try { if (termsVersion) localStorage.setItem(AGREED_KEY, termsVersion); } catch (e) { /* ignore */ }
+  }
+  function forgetAgreed() {
+    try { localStorage.removeItem(AGREED_KEY); } catch (e) { /* ignore */ }
+  }
+  function agreeMsg() {
+    return 'Please confirm you are ' + minAge + ' or older and agree to the Terms and Privacy Policy.';
+  }
+  function applyPolicy(cfg) {
+    if (cfg && Number(cfg.minAge) > 0) minAge = Number(cfg.minAge);
+    if (cfg && cfg.termsVersion) termsVersion = String(cfg.termsVersion);
+    document.querySelectorAll('[data-min-age]').forEach((el) => { el.textContent = String(minAge); });
+  }
+  function boxesTicked() {
+    return !!($('su-age') && $('su-age').checked && $('su-agree') && $('su-agree').checked);
   }
 
   let contactEmail = 'forstaken12@gmail.com';
@@ -167,7 +199,7 @@
     if (/quick check/i.test(s)) return CHECK_MSG;
     if (/cancelled/i.test(s)) return 'Sign-in was cancelled.';
     if (/expired/i.test(s)) return 'That sign-in link expired. Please try again.';
-    if (/18 or older|agree to the Terms/i.test(s)) return 'Please confirm you are 18 or older and agree to the Terms and Privacy Policy.';
+    if (/or older|agree to the Terms/i.test(s)) return agreeMsg();
     if (/already has an account/i.test(s)) return 'That email already has an account. Try signing in with your password.';
     if (/already used/i.test(s)) return 'That email is already used on another account.';
     return 'Sign-in could not be finished. Please try again.';
@@ -182,12 +214,15 @@
   function startOauth(provider) {
     const err = $('oauth-err');
     if (err) err.textContent = '';
-    if (!$('su-age') || !$('su-age').checked || !$('su-agree') || !$('su-agree').checked) {
-      showOauthError('Please confirm you are 18 or older and agree to the Terms and Privacy Policy.');
+    const ticked = boxesTicked();
+    if (!ticked && !knownAgreed()) {
+      showOauthError(agreeMsg());
       return;
     }
-    const q = new URLSearchParams({ agree: '1', age: '1', fingerprint: fingerprint() });
-    if (turnstileSiteKey) {
+    const q = new URLSearchParams({ fingerprint: fingerprint() });
+    if (ticked) { q.set('agree', '1'); q.set('age', '1'); }
+    // Google skips the quick check; Apple keeps it.
+    if (turnstileSiteKey && provider !== 'google') {
       const tok = captchaToken('ts-auth');
       if (!tok) { showOauthError(CHECK_MSG); return; }
       q.set('turnstileToken', tok);
@@ -200,10 +235,21 @@
     if (ov) ov.classList.remove('show');
   }
 
+  function checkTerms(m) {
+    if (!m) return;
+    if (m.termsOk) {
+      rememberAgreed();
+      if ($('agree-overlay')) $('agree-overlay').classList.remove('show');
+    } else if ($('agree-overlay')) {
+      $('agree-overlay').classList.add('show');
+    }
+  }
+
   async function afterSignIn() {
     signedIn = true;
     hideAuth();
     await refresh();
+    checkTerms(me);
     await loadOffers();
     requestAnimationFrame(moveTabInk);
   }
@@ -677,6 +723,15 @@
       toast('Link ready', data.mailNote || 'Check your email.');
     } catch (err) { toast('Couldn’t send', err.message); }
   });
+  $('ag-go').addEventListener('click', async () => {
+    $('ag-err').textContent = '';
+    if (!$('ag-age').checked || !$('ag-agree').checked) { $('ag-err').textContent = agreeMsg(); return; }
+    try {
+      await api('/api/auth/agree', { method: 'POST', body: { agree: true, age: true } });
+      await refresh();
+      checkTerms(me);
+    } catch (err) { $('ag-err').textContent = err.message; }
+  });
   $('verify-done').addEventListener('click', () => $('verify-overlay').classList.remove('show'));
   $('form-reset').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -791,6 +846,9 @@
   };
 
   const bootParams = new URLSearchParams(location.search);
+  // A brand-new Google account came back asking for the boxes: show them.
+  const bootNeedsBoxes = /or older|agree to the Terms/i.test(bootParams.get('authError') || '');
+  if (bootNeedsBoxes) forgetAgreed();
   if (bootParams.get('authError')) {
     showOauthError(bootParams.get('authError'));
     if (history.replaceState) history.replaceState({}, '', location.pathname || '/');
@@ -803,6 +861,7 @@
       if ($('demo-badge') && !signedIn) $('demo-badge').hidden = !cfg.demo;
       applyOauthButtons(cfg.oauth);
       applyContactEmail(cfg.contactEmail);
+      applyPolicy(cfg);
       setupTurnstile(cfg.turnstileSiteKey);
     } catch (e) { /* ignore */ }
     const path = location.pathname;
@@ -823,7 +882,7 @@
     try {
       const st = await fetch('/api/auth/status', { credentials: 'same-origin' }).then((r) => r.json());
       if (!st.signedIn) {
-        showAuth(path === '/reset' ? 'login' : 'signup');
+        showAuth(path === '/reset' || (knownAgreed() && !bootNeedsBoxes) ? 'login' : 'signup');
         return;
       }
       // The sign-in overlay starts visible in the HTML. After Google/Apple

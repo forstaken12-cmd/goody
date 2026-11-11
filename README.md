@@ -96,6 +96,8 @@ Never put real secrets in git. Set these in the Render dashboard (or your `.env`
 - `PUBLIC_BASE_URL` — `https://goody-dfi5.onrender.com` (recommended; required for Google/Apple redirect URLs)
 - Captcha: `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` (Cloudflare Turnstile; off until both are set; see AUTH-SETUP.md)
 - `CONTACT_EMAIL` — shown on Terms, Privacy, and in the app (defaults to `forstaken12@gmail.com`)
+
+Age and Terms live in `server/lib/policy.js`: `MIN_AGE` (18, because Lootably requires 18+) and `TERMS_VERSION`. People tick the boxes once; bump `TERMS_VERSION` when the Terms change and everyone is asked once more.
 - Google sign-in: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (see AUTH-SETUP.md)
 - Apple sign-in: `APPLE_CLIENT_ID` (Services ID), `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`. Sign in with Apple needs a paid Apple Developer Program membership ($99 USD/year; confirm on Apple’s site). Optional domain-verify file: `APPLE_DOMAIN_ASSOCIATION`
 - `MAIL_FROM` and `BREVO_API_KEY` (preferred on Render; HTTP API). SMTP (`SMTP_URL` or `SMTP_HOST`+`SMTP_USER`+`SMTP_PASS`) and `SENDGRID_API_KEY` also work where outbound SMTP is allowed. If more than one is set, Brevo is used first.

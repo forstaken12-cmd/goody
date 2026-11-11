@@ -173,7 +173,7 @@ function publicOauthError(raw) {
   if (/quick check/i.test(s)) return 'Please finish the quick check.';
   if (/cancelled|access_denied/i.test(s)) return 'Sign-in was cancelled.';
   if (/expired/i.test(s)) return 'That sign-in link expired. Please try again.';
-  if (/18 or older|agree to the Terms/i.test(s)) return 'Please confirm you are 18 or older and agree to the Terms and Privacy Policy.';
+  if (/or older|agree to the Terms/i.test(s)) return require('./policy').agreeMessage();
   if (/already has an account/i.test(s)) return 'That email already has an account. Try signing in with your password.';
   if (/already used/i.test(s)) return 'That email is already used on another account.';
   return 'Sign-in could not be finished. Please try again.';
