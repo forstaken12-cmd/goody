@@ -42,10 +42,11 @@ const config = {
     process.env.RENDER === 'true' ||
     /^https:/i.test(process.env.PUBLIC_BASE_URL || '') ||
     !!process.env.RENDER_EXTERNAL_URL,
-  mailFrom: process.env.MAIL_FROM || '',
-  smtpUrl: process.env.SMTP_URL || '',
-  smtpHost: process.env.SMTP_HOST || '',
-  sendgridKey: process.env.SENDGRID_API_KEY || '',
+  mailFrom: envStr('MAIL_FROM'),
+  smtpUrl: envStr('SMTP_URL'),
+  smtpHost: envStr('SMTP_HOST'),
+  sendgridKey: envStr('SENDGRID_API_KEY'),
+  brevoApiKey: envStr('BREVO_API_KEY'),
   paypalClientId: process.env.PAYPAL_CLIENT_ID || '',
   paypalClientSecret: process.env.PAYPAL_CLIENT_SECRET || '',
   paypalEnv: process.env.PAYPAL_ENV || 'sandbox',

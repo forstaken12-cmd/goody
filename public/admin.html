@@ -92,7 +92,7 @@
       ]);
       const p = st.payouts || c.payouts || {};
       $('pay-status').innerHTML = '<h3>Payouts</h3>' +
-        '<p class="note">Database: ' + esc(st.db) + (st.mail ? ' · Email is on' : ' · Email is off (links go to the server log)') + '</p>' +
+        '<p class="note">Database: ' + esc(st.db) + (st.mail ? ' · Email is on (' + esc(st.mail) + ')' : ' · Email is off (links go to the server log)') + '</p>' +
         payLabel(p.paypal, 'PayPal Payouts') +
         payLabel(p.tremendous, 'Tremendous (gift cards)') +
         payLabel(p.zebedee, 'ZBD / ZEBEDEE (Bitcoin Lightning)');

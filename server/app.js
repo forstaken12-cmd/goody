@@ -12,7 +12,7 @@ const { createLimiter } = require('./lib/rateLimit');
 const { listOffers, findOffer } = require('./demo/catalog');
 const { createSimulator } = require('./demo/simulator');
 const goals = require('./lib/goals');
-const { createMailer } = require('./lib/mail');
+const { createMailer, healthMail } = require('./lib/mail');
 const payouts = require('./lib/payouts');
 const oauth = require('./lib/oauth');
 
@@ -148,7 +148,7 @@ async function createApp(opts) {
       ok: true,
       demo: cfg.demoPartner,
       db: db.dialect === 'pg' ? 'postgres' : 'sqlite',
-      mail: mailer.enabled,
+      mail: healthMail(mailer),
       payouts: payoutStatus(),
       oauth: oauth.providersStatus(cfg)
     });
@@ -688,7 +688,7 @@ async function createApp(opts) {
   app.get('/admin/api/status', requireAdmin, (_req, res) => {
     res.json({
       db: db.dialect === 'pg' ? 'postgres' : 'sqlite',
-      mail: mailer.enabled,
+      mail: healthMail(mailer),
       payouts: payoutStatus(),
       demo: cfg.demoPartner
     });

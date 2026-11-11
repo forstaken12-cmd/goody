@@ -79,7 +79,7 @@ See **PARTNERS.md** for who to apply to, what they usually ask for, and the exac
 
 - A valid `DATABASE_URL` pointing at Postgres, and a plan for when free Render Postgres expires on 2026-12-11
 - `PUBLIC_BASE_URL=https://goody-dfi5.onrender.com` if it is not already picked up from Render
-- An email provider (`MAIL_FROM` plus `SMTP_URL` or `SENDGRID_API_KEY`) so confirmation and reset links are actually sent
+- An email provider (`MAIL_FROM` plus `BREVO_API_KEY`, which is preferred on Render because the free plan blocks outbound SMTP; or `SMTP_URL` / `SENDGRID_API_KEY`) so confirmation and reset links are actually sent
 - Real partner accounts and secrets (see PARTNERS.md). Confirm leftover official details for ayeT-Studios and TheoremReach.
 - Real payout provider keys (PayPal, Tremendous, and/or ZBD). For Lightning, also set `BTC_USD` so the amount can be converted. Admin “mark sent” or “Approved, send manually” does not move money by itself.
 - Stronger anti-abuse (captcha, phone checks, VPN tools). TheoremReach in particular asks for a captcha or similar on signup.
@@ -96,7 +96,7 @@ Never put real secrets in git. Set these in the Render dashboard (or your `.env`
 - `PUBLIC_BASE_URL` — `https://goody-dfi5.onrender.com` (recommended; required for Google/Apple redirect URLs)
 - Google sign-in: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (see AUTH-SETUP.md)
 - Apple sign-in: `APPLE_CLIENT_ID` (Services ID), `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`. Sign in with Apple needs a paid Apple Developer Program membership ($99 USD/year; confirm on Apple’s site). Optional domain-verify file: `APPLE_DOMAIN_ASSOCIATION`
-- `MAIL_FROM` and either `SMTP_URL` / `SMTP_HOST`+`SMTP_USER`+`SMTP_PASS`, or `SENDGRID_API_KEY`
+- `MAIL_FROM` and `BREVO_API_KEY` (preferred on Render; HTTP API). SMTP (`SMTP_URL` or `SMTP_HOST`+`SMTP_USER`+`SMTP_PASS`) and `SENDGRID_API_KEY` also work where outbound SMTP is allowed. If more than one is set, Brevo is used first.
 - Payout keys, when you are ready: `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_ENV`; `TREMENDOUS_API_KEY`, `TREMENDOUS_CAMPAIGN_ID`, `TREMENDOUS_ENV`; `ZBD_API_KEY` or `ZEBEDEE_API_KEY`, plus `BTC_USD`
 - Partner secrets, when you are approved: `BITLABS_SECRET`, `ADGEM_POSTBACK_KEY`, `CPX_SECURE_HASH`, `TOROX_SECRET`, `LOOTABLY_POSTBACK_SECRET`, and later `AYET_SECRET` / `THEOREMREACH_SECRET` after you confirm official docs
 
