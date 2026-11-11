@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Goody admin</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    body, html { overflow: auto; height: auto; background: #EEF5F3; -webkit-user-select: text; user-select: text; }
+    #admin { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+    h1 { font-size: 28px; letter-spacing: -0.04em; margin: 0 0 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 650; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .row-actions button { height: 32px; min-height: 32px; padding: 0 10px; font-size: 12px; margin: 0; width: auto; }
+    .tabs-admin { display: flex; gap: 8px; margin: 16px 0; }
+  </style>
+</head>
+<body>
+  <div id="admin">
+    <h1>Goody admin</h1>
+    <p class="note">Look at users and the ledger. Approve or reject cash out requests. Nothing is sent for real yet.</p>
+    <form id="login" class="card" style="margin-top:16px;max-width:360px">
+      <label class="field" for="pw">Password</label>
+      <input class="ln" id="pw" type="password" autocomplete="current-password" />
+      <p class="note" id="login-err"></p>
+      <button class="btn-block" type="submit">Sign in</button>
+    </form>
+    <div id="desk" hidden>
+      <div class="tabs-admin">
+        <button class="chip on" data-panel="cash">Cash outs</button>
+        <button class="chip" data-panel="users">Users</button>
+        <button class="chip" data-panel="ledger">Ledger</button>
+      </div>
+      <div class="card" id="panel-cash"><div id="cash-tbl">Loading…</div></div>
+      <div class="card" id="panel-users" hidden><div id="user-tbl"></div></div>
+      <div class="card" id="panel-ledger" hidden><div id="led-tbl"></div></div>
+    </div>
+  </div>
+  <script>
+    let token = sessionStorage.getItem('goody-admin') || '';
+    const $ = (id) => document.getElementById(id);
+    async function adminApi(path, body) {
+      const opt = { headers: { 'x-admin-token': token, Accept: 'application/json' } };
+      if (body) { opt.method = 'POST'; opt.headers['content-type'] = 'application/json'; opt.body = JSON.stringify(body); }
+      const res = await fetch(path, opt);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    }
+    function showDesk() {
+      $('login').hidden = true;
+      $('desk').hidden = false;
+      loadAll();
+    }
+    $('login').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      $('login-err').textContent = '';
+      try {
+        const r = await fetch('/admin/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: $('pw').value }) });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Wrong password');
+        token = data.token;
+        sessionStorage.setItem('goody-admin', token);
+        showDesk();
+      } catch (err) { $('login-err').textContent = err.message; }
+    });
+    document.querySelector('.tabs-admin').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-panel]');
+      if (!b) return;
+      document.querySelectorAll('.tabs-admin .chip').forEach((c) => c.classList.toggle('on', c === b));
+      ['cash','users','ledger'].forEach((p) => { $('panel-' + p).hidden = p !== b.dataset.panel; });
+    });
+    async function act(id, verb) {
+      await adminApi('/admin/api/cashouts/' + id + '/' + verb, {});
+      await loadAll();
+    }
+    async function loadAll() {
+      const [c, u, l] = await Promise.all([
+        adminApi('/admin/api/cashouts'),
+        adminApi('/admin/api/users'),
+        adminApi('/admin/api/ledger')
+      ]);
+      $('cash-tbl').innerHTML = table(
+        ['Id','User','Method','To','Points','Status','When','Actions'],
+        c.cashouts.map((r) => [
+          r.id, r.user_id, r.method, r.destination, r.points, r.status, r.created_at,
+          actions(r)
+        ])
+      );
+      $('user-tbl').innerHTML = table(
+        ['Id','Public id','Device','Available','Pending','First cash out','Created'],
+        u.users.map((r) => [r.id, r.public_id, r.device_id, r.balance.available, r.balance.pending, r.first_cashout_at || '—', r.created_at])
+      );
+      $('led-tbl').innerHTML = table(
+        ['Id','User','Type','Status','Source','Partner','Tx','Points','Note','When'],
+        l.entries.map((r) => [r.id, r.user_id, r.entry_type, r.status, r.source, r.partner || '', r.tx_id || '', r.points, r.note || '', r.created_at])
+      );
+    }
+    function actions(r) {
+      if (r.status === 'requested') return '<div class="row-actions"><button class="go small" data-a="approve" data-id="'+r.id+'">Approve</button><button class="go small ghost" data-a="reject" data-id="'+r.id+'">Reject</button></div>';
+      if (r.status === 'approved') return '<div class="row-actions"><button class="go small" data-a="sent" data-id="'+r.id+'">Mark sent</button></div>';
+      return '';
+    }
+    function table(heads, rows) {
+      if (!rows.length) return '<p class="empty">None yet</p>';
+      return '<table><thead><tr>' + heads.map((h) => '<th>'+h+'</th>').join('') + '</tr></thead><tbody>' +
+        rows.map((r) => '<tr>' + r.map((c) => '<td>'+c+'</td>').join('') + '</tr>').join('') + '</tbody></table>';
+    }
+    $('desk').addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-a]');
+      if (!b) return;
+      try { await act(b.dataset.id, b.dataset.a); } catch (err) { alert(err.message); }
+    });
+    if (token) {
+      adminApi('/admin/api/cashouts').then(showDesk).catch(() => { token = ''; sessionStorage.removeItem('goody-admin'); });
+    }
+  </script>
+</body>
+</html>

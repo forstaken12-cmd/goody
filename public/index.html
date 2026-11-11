@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#E8F4F1" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Goody" />
+  <meta name="description" content="Do little tasks. Get points. Cash out when you’re ready." />
+  <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <title>Goody</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="top">
+      <div class="demo-badge" id="demo-badge" hidden title="Demo — no real money">Demo</div>
+      <div class="wordmark">Goody</div>
+      <div class="header-actions">
+        <button class="icon-btn" id="btn-mute" aria-label="Mute" title="Mute">
+          <svg id="icon-vol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 5L6 9H3v6h3l5 4V5z"/>
+            <path d="M15.5 8.5a5 5 0 010 7"/>
+            <path d="M18 6a8 8 0 010 12"/>
+          </svg>
+        </button>
+        <button class="icon-btn" id="btn-gear" aria-label="How it works" title="How it works">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M12 10v6M12 8h.01"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="screens">
+      <section class="screen active" id="screen-home" data-tab="home">
+        <div class="hero-card">
+          <div class="home-hero">
+            <div class="mascot idle" id="mascot" aria-hidden="true"></div>
+            <div class="balance-block">
+              <div class="balance-pts" id="bal-pts"><span id="bal-num">0</span><span class="unit">pts</span></div>
+              <div class="balance-usd" id="bal-usd">≈ $0.00</div>
+              <div class="pending-line" id="pending-line" hidden></div>
+            </div>
+          </div>
+          <div class="goal-row" id="goal-row">
+            <div class="goal-lbl" id="goal-val">Goal: 0 / 500 pts</div>
+            <div class="bar" aria-label="Progress toward cash out"><i id="goal-bar"></i></div>
+          </div>
+        </div>
+        <div class="row-2">
+          <div class="card compact mini-card streak-card">
+            <div class="k">Streak</div>
+            <div class="v"><span class="streak-num" id="streak-num">0</span> <span class="note" id="streak-label">days</span></div>
+            <button class="go small" id="btn-daily" style="margin-top:10px;width:100%">Check in</button>
+          </div>
+          <div class="card compact mini-card">
+            <div class="k">Today</div>
+            <ul class="goals" id="goal-list"></ul>
+          </div>
+        </div>
+        <div class="feat-head">For you</div>
+        <div id="feat-list"></div>
+      </section>
+
+      <section class="screen" id="screen-offers" data-tab="offers">
+        <h2 class="section-title">Offers</h2>
+        <p class="section-lead">Finish a task, then we check it.</p>
+        <div class="chip-row" id="filter-row">
+          <button class="chip on" data-cat="all">All</button>
+          <button class="chip" data-cat="games">Games</button>
+          <button class="chip" data-cat="apps">Apps</button>
+          <button class="chip" data-cat="surveys">Surveys</button>
+        </div>
+        <div class="sort-bar" id="sort-row">
+          <button class="chip on" data-sort="highest">Highest pay</button>
+          <button class="chip" data-sort="quickest">Quickest</button>
+          <button class="chip" data-sort="newest">Newest</button>
+        </div>
+        <div id="offer-list"></div>
+      </section>
+
+      <section class="screen" id="screen-history" data-tab="history">
+        <h2 class="section-title">History</h2>
+        <p class="section-lead">Every task, with how it ended.</p>
+        <div class="chip-row" id="hist-filter">
+          <button class="chip on" data-st="all">All</button>
+          <button class="chip" data-st="pending">Checking</button>
+          <button class="chip" data-st="paid">Paid</button>
+          <button class="chip" data-st="rejected">Rejected</button>
+        </div>
+        <div class="hist" id="hist-list"></div>
+      </section>
+
+      <section class="screen" id="screen-cash" data-tab="cash">
+        <h2 class="section-title">Cash out</h2>
+        <div class="callout" id="first-callout" hidden>Your first cash out only needs $0.50.</div>
+        <div class="card compact" style="text-align:center;margin-bottom:12px">
+          <div class="balance-pts" id="cash-pts" style="font-size:32px"><span id="cash-num">0</span><span class="unit">pts</span></div>
+          <div class="note" id="cash-usd">≈ $0.00</div>
+        </div>
+        <div class="card">
+          <h3>Pick a way</h3>
+          <button class="pay-opt on" data-pay="lightning" id="pay-lightning"><span>Bitcoin</span><span class="min" id="min-ln">min $0.50</span></button>
+          <button class="pay-opt" data-pay="paypal" id="pay-paypal"><span>PayPal</span><span class="min" id="min-pp">min $0.50</span></button>
+          <button class="pay-opt" data-pay="gift" id="pay-gift"><span>Gift card</span><span class="min" id="min-gift">min $0.50</span></button>
+          <div id="gift-pick" hidden>
+            <label class="field" for="gift-kind">Card</label>
+            <select class="ln" id="gift-kind">
+              <option value="Toy Shop">Toy Shop</option>
+              <option value="Book Nook">Book Nook</option>
+              <option value="Game Store">Game Store</option>
+            </select>
+          </div>
+          <label class="field" for="pay-to" id="pay-to-lbl">Send to</label>
+          <input class="ln" id="pay-to" type="text" autocomplete="off" spellcheck="false" placeholder="you@wallet.com" />
+          <p class="note" id="wd-msg"></p>
+          <button class="btn-block" id="btn-cash">Cash out</button>
+        </div>
+        <div class="card compact" style="margin-top:12px">
+          <h3>Requests</h3>
+          <div id="tx-list" class="empty">No cash outs yet</div>
+        </div>
+      </section>
+    </div>
+
+    <nav class="tabs" id="tabs">
+      <div class="tab-ink" id="tab-ink" aria-hidden="true"></div>
+      <button class="tab active" data-tab="home" aria-label="Home">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l8 7h-3v8H7v-8H4l8-7z"/></svg>
+        Home
+      </button>
+      <button class="tab" data-tab="offers" aria-label="Offers">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="3"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+        Offers
+      </button>
+      <button class="tab" data-tab="history" aria-label="History">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 8v5l3 2"/></svg>
+        History
+      </button>
+      <button class="tab" data-tab="cash" aria-label="Cash out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="3"/><path d="M3 10h18"/></svg>
+        Cash out
+      </button>
+    </nav>
+  </div>
+
+  <div class="overlay show" id="welcome">
+    <div class="modal">
+      <div class="hero-coin" id="welcome-mascot"></div>
+      <h2>Goody</h2>
+      <p>Do little tasks. Get points. Cash out when you’re ready. Partners pay us when you finish — you get most of it.</p>
+      <p class="note" style="margin-top:8px" id="welcome-demo">This is a demo. No real money is sent.</p>
+      <button class="btn-block" id="btn-start">Let’s go!</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="how-overlay">
+    <div class="modal left" id="how-modal">
+      <h2 style="text-align:center">How it works</h2>
+      <div id="how-body"></div>
+      <button class="btn-block" id="btn-how-close">Got it</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="offer-overlay">
+    <div class="modal left" id="offer-modal"></div>
+  </div>
+
+  <div class="overlay" id="wd-overlay">
+    <div class="modal" id="wd-modal"></div>
+  </div>
+
+  <div id="toasts"></div>
+  <div id="fx" aria-hidden="true"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

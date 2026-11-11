@@ -1,0 +1,18 @@
+{
+  "name": "goody",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Goody rewards app — points from offers and surveys",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "sql.js": "^1.15.2"
+  }
+}
