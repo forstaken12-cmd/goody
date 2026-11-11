@@ -152,6 +152,7 @@ header.top {
 }
 
 .hero-card {
+  flex-shrink: 0;
   background: rgba(255,255,255,0.78);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
@@ -888,3 +889,86 @@ input[type=range] { width: 100%; accent-color: var(--coral); }
 .t-snacks { background: linear-gradient(160deg, #7ED8F5, #2A9FD8); }
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+
+/* Auth, legal, and account */
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--ink);
+}
+.check input {
+  margin-top: 2px;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  accent-color: var(--coral, #E2453A);
+}
+.linkish {
+  border: 0;
+  background: none;
+  color: var(--teal, #0A8F86);
+  font: inherit;
+  font-weight: 650;
+  padding: 0;
+  height: auto;
+  min-height: 0;
+  width: auto;
+  display: inline;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.center-note { text-align: center; margin-top: 12px; }
+.note.err { color: var(--coral, #E2453A); min-height: 1.2em; }
+#auth-modal .hero-coin { margin: 0 auto 8px; }
+#auth-modal h2, #auth-lead { text-align: center; }
+#auth-modal .ln { margin-bottom: 4px; }
+#auth-modal .field { margin-top: 10px; }
+a.ghost-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  color: inherit;
+  background: #EEF5F3;
+  box-shadow: none;
+  margin-top: 8px;
+}
+a.ghost-link:hover { filter: none; }
+#account-modal .btn-block { margin-top: 8px; }
+#verify-banner { margin: 0 0 12px; flex-shrink: 0; }
+#verify-banner .linkish { color: inherit; }
+
+html.legal-page, body.legal-page {
+  overflow: auto;
+  height: auto;
+  min-height: 100%;
+  background: #EEF5F3;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.legal {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px 20px 80px;
+}
+.legal h1 { font-size: 28px; letter-spacing: -0.04em; margin: 0 0 12px; }
+.legal h2 { font-size: 18px; margin: 22px 0 8px; letter-spacing: -0.03em; }
+.legal p, .legal li { font-size: 15px; line-height: 1.55; color: var(--ink, #17333A); }
+.legal ul { padding-left: 1.2em; margin: 0 0 8px; }
+.legal-kicker { margin: 0 0 10px; }
+.legal-kicker a { color: var(--teal, #0A8F86); font-weight: 650; text-decoration: none; }
+.legal-banner {
+  background: #FFF3C4;
+  color: #5A4700;
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.4;
+  margin: 0 0 12px;
+}

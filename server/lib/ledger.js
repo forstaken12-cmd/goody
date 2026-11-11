@@ -2,8 +2,8 @@
 
 const { creditFromPartner, money, isoNow } = require('./money');
 
-function balanceOf(db, userId) {
-  const row = db.get(
+async function balanceOf(db, userId) {
+  const row = await db.get(
     `SELECT
        COALESCE(SUM(CASE WHEN entry_type='credit' AND status='paid' THEN points ELSE 0 END), 0) AS paid_in,
        COALESCE(SUM(CASE WHEN entry_type='debit' AND status='paid' THEN points ELSE 0 END), 0) AS paid_out,
@@ -29,9 +29,9 @@ function balanceOf(db, userId) {
   };
 }
 
-function findByTx(db, partner, txId) {
+async function findByTx(db, partner, txId) {
   if (!partner || !txId) return undefined;
-  return db.get('SELECT * FROM ledger WHERE partner = ? AND tx_id = ?', [partner, txId]);
+  return await db.get('SELECT * FROM ledger WHERE partner = ? AND tx_id = ?', [partner, txId]);
 }
 
 /**
@@ -39,12 +39,12 @@ function findByTx(db, partner, txId) {
  * status: 'pending' | 'paid' | 'rejected' | 'reversal'
  * Idempotent on (partner, tx_id) for the same outcome.
  */
-function applyPostback(db, { userId, partner, txId, offerId, source, partnerUsd, status, note, sharePct, pointUsd }) {
+async function applyPostback(db, { userId, partner, txId, offerId, source, partnerUsd, status, note, sharePct, pointUsd }) {
   if (!userId) throw Object.assign(new Error('unknown user'), { code: 'NO_USER', http: 400 });
   if (!partner || !txId) throw Object.assign(new Error('missing transaction'), { code: 'NO_TX', http: 400 });
 
   const now = isoNow();
-  const existing = findByTx(db, partner, txId);
+  const existing = await findByTx(db, partner, txId);
   const isReversal = status === 'reversal' || status === 'rejected' || status === 'chargeback';
 
   if (isReversal) {
@@ -52,23 +52,23 @@ function applyPostback(db, { userId, partner, txId, offerId, source, partnerUsd,
       // Record a rejected placeholder so a later "paid" with same tx is ignored? Better to
       // insert a rejected credit so a delayed paid postback can be recognized and refused.
       const parts = creditFromPartner(partnerUsd || 0, sharePct, pointUsd);
-      db.run(
+      await db.run(
         `INSERT INTO ledger (user_id, entry_type, status, source, partner, offer_id, tx_id, partner_usd, user_usd, points, note, created_at, updated_at)
          VALUES (?, 'credit', 'rejected', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [userId, source || 'offer', partner, offerId || null, txId, parts.partnerUsd, parts.userUsd, parts.points, note || 'reversal (no prior credit)', now, now]
       );
-      return { action: 'logged-reversal', entry: findByTx(db, partner, txId), idempotent: false };
+      return { action: 'logged-reversal', entry: await findByTx(db, partner, txId), idempotent: false };
     }
     if (existing.status === 'rejected') {
       return { action: 'already-rejected', entry: existing, idempotent: true };
     }
-    db.run('UPDATE ledger SET status = ?, note = ?, updated_at = ? WHERE id = ?', [
+    await db.run('UPDATE ledger SET status = ?, note = ?, updated_at = ? WHERE id = ?', [
       'rejected',
       note || existing.note || 'reversed by partner',
       now,
       existing.id
     ]);
-    return { action: 'reversed', entry: findByTx(db, partner, txId), idempotent: false };
+    return { action: 'reversed', entry: await findByTx(db, partner, txId), idempotent: false };
   }
 
   const want = status === 'pending' ? 'pending' : 'paid';
@@ -83,50 +83,50 @@ function applyPostback(db, { userId, partner, txId, offerId, source, partnerUsd,
       return { action: 'duplicate', entry: existing, idempotent: true };
     }
     if (existing.status === 'pending' && want === 'paid') {
-      db.run(
+      await db.run(
         'UPDATE ledger SET status = ?, partner_usd = ?, user_usd = ?, points = ?, note = ?, updated_at = ? WHERE id = ?',
         [want, parts.partnerUsd, parts.userUsd, parts.points, note || existing.note, now, existing.id]
       );
-      return { action: 'settled', entry: findByTx(db, partner, txId), idempotent: false };
+      return { action: 'settled', entry: await findByTx(db, partner, txId), idempotent: false };
     }
     // paid then pending? ignore
     return { action: 'duplicate', entry: existing, idempotent: true };
   }
 
-  db.run(
+  await db.run(
     `INSERT INTO ledger (user_id, entry_type, status, source, partner, offer_id, tx_id, partner_usd, user_usd, points, note, created_at, updated_at)
      VALUES (?, 'credit', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [userId, want, source || 'offer', partner, offerId || null, txId, parts.partnerUsd, parts.userUsd, parts.points, note || null, now, now]
   );
-  return { action: want === 'pending' ? 'pending' : 'paid', entry: findByTx(db, partner, txId), idempotent: false };
+  return { action: want === 'pending' ? 'pending' : 'paid', entry: await findByTx(db, partner, txId), idempotent: false };
 }
 
-function holdDebit(db, { userId, source, points, usd, note }) {
+async function holdDebit(db, { userId, source, points, usd, note }) {
   const now = isoNow();
-  const r = db.run(
+  const r = await db.run(
     `INSERT INTO ledger (user_id, entry_type, status, source, partner, offer_id, tx_id, partner_usd, user_usd, points, note, created_at, updated_at)
      VALUES (?, 'debit', 'pending', ?, NULL, NULL, NULL, 0, ?, ?, ?, ?, ?)`,
     [userId, source || 'cashout', money(usd || 0), points, note || null, now, now]
   );
-  return db.get('SELECT * FROM ledger WHERE id = ?', [r.lastInsertRowid]);
+  return await db.get('SELECT * FROM ledger WHERE id = ?', [r.lastInsertRowid]);
 }
 
-function settleDebit(db, ledgerId, status) {
+async function settleDebit(db, ledgerId, status) {
   const now = isoNow();
-  db.run('UPDATE ledger SET status = ?, updated_at = ? WHERE id = ? AND entry_type = ?', [
+  await db.run('UPDATE ledger SET status = ?, updated_at = ? WHERE id = ? AND entry_type = ?', [
     status, now, ledgerId, 'debit'
   ]);
-  return db.get('SELECT * FROM ledger WHERE id = ?', [ledgerId]);
+  return await db.get('SELECT * FROM ledger WHERE id = ?', [ledgerId]);
 }
 
-function history(db, userId, status) {
+async function history(db, userId, status) {
   if (status && status !== 'all') {
-    return db.all(
+    return await db.all(
       `SELECT * FROM ledger WHERE user_id = ? AND status = ? ORDER BY created_at DESC, id DESC LIMIT 200`,
       [userId, status]
     );
   }
-  return db.all(
+  return await db.all(
     `SELECT * FROM ledger WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 200`,
     [userId]
   );

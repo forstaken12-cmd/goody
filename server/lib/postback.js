@@ -104,6 +104,31 @@ function verifyGeneric(body, secret) {
   return { ok, reason: ok ? 'ok' : 'bad signature' };
 }
 
+
+/** Lootably (public docs): sha256(userID + ip + revenue + currencyReward + postback secret). */
+function verifyLootably(body, secret) {
+  const userID = first(body, ['userID', 'userid', 'user_id', 'uid']) || '';
+  const ip = first(body, ['ip', 'userIP', 'user_ip']) || '';
+  const revenue = first(body, ['revenue']) != null ? String(first(body, ['revenue'])) : '';
+  const currencyReward = first(body, ['currencyReward', 'reward']) != null ? String(first(body, ['currencyReward', 'reward'])) : '';
+  const got = first(body, ['hash']);
+  if (!got) return { ok: false, reason: 'missing hash' };
+  const expect = crypto.createHash('sha256').update(String(userID) + String(ip) + revenue + currencyReward + secret).digest('hex');
+  const ok = timingSafeEqual(expect, got);
+  return { ok, reason: ok ? 'ok' : 'bad hash' };
+}
+
+/** Torox (publisher integration guide): md5(oid + "-" + user_id + "-" + app placement key). */
+function verifyTorox(body, secret) {
+  const oid = first(body, ['oid', 'offer_id']);
+  const userId = first(body, ['user_id', 'userId', 'uid']);
+  const got = first(body, ['sig', 'hash']);
+  if (oid == null || userId == null || !got) return { ok: false, reason: 'missing sig, oid, or user_id' };
+  const expect = md5(String(oid) + '-' + String(userId) + '-' + secret);
+  const ok = timingSafeEqual(expect, got);
+  return { ok, reason: ok ? 'ok' : 'bad signature' };
+}
+
 function signGeneric({ uid, txid, payout, status }, secret) {
   const payload = [uid, txid, payout, status].map((x) => (x == null ? '' : String(x))).join('|');
   return hmac('sha256', secret, payload, 'hex');
@@ -121,6 +146,14 @@ function parseStatus(style, body) {
     // SCREENOUT is a paid (usually smaller) completion, not a reversal
     return 'paid';
   }
+  if (style === 'lootably') {
+    if (String(body.status) === '0' || raw === '0') return 'reversal';
+    return 'paid';
+  }
+  if (style === 'torox' || style === 'ayet') {
+    const payout = Number(first(body, ['payout', 'payout_usd', 'amount', 'revenue']));
+    if (String(body.is_chargeback) === '1' || raw === 'chargeback' || (Number.isFinite(payout) && payout < 0)) return 'reversal';
+  }
   if (raw === '0' || raw === 'rejected' || raw === 'reversal' || raw === 'chargeback' || raw === 'canceled' || raw === 'cancelled') {
     return 'reversal';
   }
@@ -129,10 +162,10 @@ function parseStatus(style, body) {
 }
 
 function parseFields(style, body) {
-  const uid = first(body, ['uid', 'user_id', 'userid', 'player_id', 'USER:ID', 'USER:UID']);
-  const txid = first(body, ['txid', 'tx_id', 'tx', 'transaction_id', 'trans_id', 'conversion_id', 'TX', 'request_id']);
-  const payout = Number(first(body, ['payout', 'amount_usd', 'usd', 'raw', 'partner_usd', 'VALUE:USD', 'revenue']));
-  const offerId = first(body, ['offer_id', 'offerid', 'offer_ID', 'campaign_id', 'task_id']);
+  const uid = first(body, ['uid', 'user_id', 'userid', 'userID', 'player_id', 'external_identifier', 'USER:ID', 'USER:UID']);
+  const txid = first(body, ['txid', 'tx_id', 'tx', 'transaction_id', 'transactionID', 'trans_id', 'conversion_id', 'id', 'TX', 'request_id']);
+  const payout = Number(first(body, ['payout', 'payout_usd', 'amount_usd', 'usd', 'raw', 'partner_usd', 'VALUE:USD', 'revenue']));
+  const offerId = first(body, ['offer_id', 'offerid', 'offerID', 'offer_ID', 'oid', 'campaign_id', 'task_id']);
   const sourceHint = first(body, ['source', 'kind']);
   return {
     uid: uid != null ? String(uid) : undefined,
@@ -163,6 +196,8 @@ function verifyAndParse(req, partnerCfg, publicBaseUrl) {
   if (style === 'bitlabs') v = verifyBitlabs(req, secret, publicBaseUrl);
   else if (style === 'adgem') v = verifyAdgem(req, secret, publicBaseUrl);
   else if (style === 'cpx') v = verifyCpx(body, secret);
+  else if (style === 'lootably') v = verifyLootably(body, secret);
+  else if (style === 'torox') v = verifyTorox(body, secret);
   else v = verifyGeneric(body, secret);
 
   if (!v.ok) return { ok: false, reason: v.reason, http: 403 };
@@ -175,5 +210,5 @@ function verifyAndParse(req, partnerCfg, publicBaseUrl) {
 
 module.exports = {
   hmac, md5, timingSafeEqual, verifyAndParse, signGeneric, parseFields, parseStatus,
-  verifyBitlabs, verifyAdgem, verifyCpx, verifyGeneric, buildFullUrl
+  verifyBitlabs, verifyAdgem, verifyCpx, verifyGeneric, verifyLootably, verifyTorox, buildFullUrl
 };

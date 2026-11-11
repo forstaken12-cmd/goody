@@ -10,11 +10,11 @@ const GOALS = [
   { key: 'points', label: 'Earn 200 points', target: 200 }
 ];
 
-function getStreak(db, userId, tz) {
-  let row = db.get('SELECT * FROM streaks WHERE user_id = ?', [userId]);
+async function getStreak(db, userId, tz) {
+  let row = await db.get('SELECT * FROM streaks WHERE user_id = ?', [userId]);
   if (!row) {
-    db.run('INSERT INTO streaks (user_id, current, best, last_date) VALUES (?, 0, 0, NULL)', [userId]);
-    row = db.get('SELECT * FROM streaks WHERE user_id = ?', [userId]);
+    await db.run('INSERT INTO streaks (user_id, current, best, last_date) VALUES (?, 0, 0, NULL)', [userId]);
+    row = await db.get('SELECT * FROM streaks WHERE user_id = ?', [userId]);
   }
   const today = todayStr(tz);
   const yest = yesterdayStr(tz);
@@ -23,31 +23,31 @@ function getStreak(db, userId, tz) {
   return { current, best: row.best || 0, lastDate: row.last_date || null, checkedInToday: row.last_date === today };
 }
 
-function applyCheckin(db, user, { tz, fireBonus }) {
+async function applyCheckin(db, user, { tz, fireBonus }) {
   const today = todayStr(tz);
   const yest = yesterdayStr(tz);
-  let row = db.get('SELECT * FROM streaks WHERE user_id = ?', [user.id]);
+  let row = await db.get('SELECT * FROM streaks WHERE user_id = ?', [user.id]);
   if (!row) {
-    db.run('INSERT INTO streaks (user_id, current, best, last_date) VALUES (?, 0, 0, NULL)', [user.id]);
-    row = db.get('SELECT * FROM streaks WHERE user_id = ?', [user.id]);
+    await db.run('INSERT INTO streaks (user_id, current, best, last_date) VALUES (?, 0, 0, NULL)', [user.id]);
+    row = await db.get('SELECT * FROM streaks WHERE user_id = ?', [user.id]);
   }
   if (row.last_date === today) {
-    return { already: true, streak: getStreak(db, user.id, tz) };
+    return { already: true, streak: await getStreak(db, user.id, tz) };
   }
   let current = 1;
   if (row.last_date === yest) current = (row.current || 0) + 1;
   const best = Math.max(row.best || 0, current);
-  db.run('UPDATE streaks SET current = ?, best = ?, last_date = ? WHERE user_id = ?', [
+  await db.run('UPDATE streaks SET current = ?, best = ?, last_date = ? WHERE user_id = ?', [
     current, best, today, user.id
   ]);
-  const streak = getStreak(db, user.id, tz);
-  if (fireBonus) fireBonus({ kind: 'daily', day: current, user });
-  if ((current === 3 || current === 7) && fireBonus) fireBonus({ kind: 'streak', day: current, user });
+  const streak = await getStreak(db, user.id, tz);
+  if (fireBonus) await fireBonus({ kind: 'daily', day: current, user });
+  if ((current === 3 || current === 7) && fireBonus) await fireBonus({ kind: 'streak', day: current, user });
   return { already: false, streak };
 }
 
-function paidToday(db, userId, today) {
-  const rows = db.all(
+async function paidToday(db, userId, today) {
+  const rows = await db.all(
     `SELECT * FROM ledger WHERE user_id = ? AND status = 'paid' AND entry_type = 'credit' AND created_at >= ?`,
     [userId, today + 'T00:00:00.000Z']
   );
@@ -58,10 +58,10 @@ function paidToday(db, userId, today) {
   return rows;
 }
 
-function computeGoals(db, userId, tz) {
+async function computeGoals(db, userId, tz) {
   const today = todayStr(tz);
-  const streak = getStreak(db, userId, tz);
-  const credits = db.all(
+  const streak = await getStreak(db, userId, tz);
+  const credits = await db.all(
     `SELECT * FROM ledger WHERE user_id = ? AND entry_type = 'credit' AND status = 'paid'`,
     [userId]
   );
@@ -78,47 +78,49 @@ function computeGoals(db, userId, tz) {
     points: Math.min(200, pts)
   };
 
-  return GOALS.map((g) => {
-    let row = db.get('SELECT * FROM daily_goals WHERE user_id = ? AND date = ? AND goal_key = ?', [
+  const out = [];
+  for (const g of GOALS) {
+    let row = await db.get('SELECT * FROM daily_goals WHERE user_id = ? AND date = ? AND goal_key = ?', [
       userId, today, g.key
     ]);
     const p = progress[g.key] || 0;
     const done = p >= g.target;
     if (!row) {
-      db.run(
+      await db.run(
         'INSERT INTO daily_goals (user_id, date, goal_key, target, progress, completed_at) VALUES (?, ?, ?, ?, ?, ?)',
         [userId, today, g.key, g.target, p, done ? isoNow() : null]
       );
     } else if (row.progress !== p || (!row.completed_at && done)) {
-      db.run(
+      await db.run(
         'UPDATE daily_goals SET progress = ?, completed_at = COALESCE(completed_at, ?) WHERE id = ?',
         [p, done ? isoNow() : null, row.id]
       );
     }
-    row = db.get('SELECT * FROM daily_goals WHERE user_id = ? AND date = ? AND goal_key = ?', [
+    row = await db.get('SELECT * FROM daily_goals WHERE user_id = ? AND date = ? AND goal_key = ?', [
       userId, today, g.key
     ]);
-    return {
+    out.push({
       key: g.key,
       label: g.label,
       target: g.target,
       progress: p,
       done,
       bonusTx: row && row.bonus_tx
-    };
-  });
+    });
+  }
+  return out;
 }
 
-function maybeGoalBonus(db, user, { tz, fireBonus }) {
-  const goals = computeGoals(db, user.id, tz);
+async function maybeGoalBonus(db, user, { tz, fireBonus }) {
+  const goals = await computeGoals(db, user.id, tz);
   if (!goals.every((g) => g.done)) return { ready: false, goals };
   const already = goals.some((g) => g.bonusTx);
   if (already) return { ready: true, already: true, goals };
   const tx = 'goal-' + todayStr(tz) + '-' + user.public_id;
-  if (fireBonus) fireBonus({ kind: 'goals', user, tx });
+  if (fireBonus) await fireBonus({ kind: 'goals', user, tx });
   const today = todayStr(tz);
-  db.run('UPDATE daily_goals SET bonus_tx = ? WHERE user_id = ? AND date = ?', [tx, user.id, today]);
-  return { ready: true, already: false, goals: computeGoals(db, user.id, tz) };
+  await db.run('UPDATE daily_goals SET bonus_tx = ? WHERE user_id = ? AND date = ?', [tx, user.id, today]);
+  return { ready: true, already: false, goals: await computeGoals(db, user.id, tz) };
 }
 
 module.exports = { GOALS, getStreak, applyCheckin, computeGoals, maybeGoalBonus };

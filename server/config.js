@@ -7,9 +7,16 @@ function num(name, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function renderPublicUrl() {
+  const ext = process.env.RENDER_EXTERNAL_URL;
+  if (!ext) return '';
+  if (/^https?:\/\//i.test(ext)) return ext.replace(/\/$/, '');
+  return 'https://' + ext.replace(/\/$/, '');
+}
+
 const config = {
   port: num('PORT', 3000),
-  publicBaseUrl: process.env.PUBLIC_BASE_URL || 'http://localhost:3000',
+  publicBaseUrl: process.env.PUBLIC_BASE_URL || renderPublicUrl() || 'http://localhost:3000',
   sharePct: Math.min(0.9, Math.max(0.5, num('USER_SHARE', 0.7))),
   pointUsd: num('POINT_USD', 0.001),
   firstCashoutUsd: num('FIRST_CASHOUT_USD', 0.5),
@@ -24,14 +31,32 @@ const config = {
   demoPaidMs: num('DEMO_PAID_MS', 2200),
   demoRejectRate: num('DEMO_REJECT_RATE', 0.1),
   adminPassword: process.env.ADMIN_PASSWORD || 'change-me-admin',
-  dbPath: process.env.DB_PATH || require('path').join(__dirname, '..', 'data', 'goody.sqlite')
+  dbPath: process.env.DB_PATH || require('path').join(__dirname, '..', 'data', 'goody.sqlite'),
+  databaseUrl: process.env.DATABASE_URL || '',
+  secureCookies: process.env.SECURE_COOKIES === '1' ||
+    process.env.RENDER === 'true' ||
+    /^https:/i.test(process.env.PUBLIC_BASE_URL || '') ||
+    !!process.env.RENDER_EXTERNAL_URL,
+  mailFrom: process.env.MAIL_FROM || '',
+  smtpUrl: process.env.SMTP_URL || '',
+  smtpHost: process.env.SMTP_HOST || '',
+  sendgridKey: process.env.SENDGRID_API_KEY || '',
+  paypalClientId: process.env.PAYPAL_CLIENT_ID || '',
+  paypalClientSecret: process.env.PAYPAL_CLIENT_SECRET || '',
+  paypalEnv: process.env.PAYPAL_ENV || 'sandbox',
+  tremendousApiKey: process.env.TREMENDOUS_API_KEY || '',
+  tremendousCampaignId: process.env.TREMENDOUS_CAMPAIGN_ID || '',
+  tremendousFunding: process.env.TREMENDOUS_FUNDING_SOURCE_ID || '',
+  tremendousEnv: process.env.TREMENDOUS_ENV || 'testflight',
+  zbdApiKey: process.env.ZBD_API_KEY || process.env.ZEBEDEE_API_KEY || '',
+  btcUsd: num('BTC_USD', 0)
 };
 
 /**
  * Partner postback configs.
- * Only BitLabs (HMAC-SHA1 of the URL), AdGem (HMAC-SHA256), and CPX Research
- * (md5 of trans_id + secret) use names checked against public docs.
- * Ayet Studios and Torox are stubs — confirm official docs before launch.
+ * BitLabs, AdGem, CPX Research, Lootably, and Torox use names and signatures
+ * checked against their public docs. Ayet Studios and TheoremReach are stubs
+ * until official signature details are confirmed — see PARTNERS.md.
  */
 config.partners = {
   demo: {
@@ -62,18 +87,34 @@ config.partners = {
     notes: 'Publisher docs/examples: md5(trans_id + "-" + app secure hash) in secure_hash. Params: user_id, trans_id, amount_usd, amount_local, status (1 = complete, 2 = canceled). Re-check the live dashboard docs at launch.'
   },
   ayet: {
-    name: 'Ayet Studios',
+    name: 'ayeT-Studios',
     secret: process.env.AYET_SECRET || '',
     style: 'generic',
     enabled: !!process.env.AYET_SECRET,
-    notes: 'TODO: confirm official postback parameter names and signature from Ayet Studios docs before enabling in production. Generic HMAC-SHA256 handler is a placeholder.'
+    notes: 'TODO: public callback docs list macros such as {payout_usd}, {transaction_id}, {external_identifier}, {callback_type}, {is_chargeback}, but I did not find an official signature scheme on the pages checked. Confirm with Ayet before enabling in production. Generic HMAC-SHA256 is only a placeholder.'
   },
   torox: {
     name: 'Torox',
     secret: process.env.TOROX_SECRET || '',
-    style: 'generic',
+    style: 'torox',
     enabled: !!process.env.TOROX_SECRET,
-    notes: 'TODO: confirm official postback parameter names and signature from Torox docs before enabling in production. Generic HMAC-SHA256 handler is a placeholder.'
+    successBody: '1',
+    notes: 'Publisher integration guide: sig = md5(oid + "-" + user_id + "-" + app placement key). Respond with the plain text 1. Reversals (if enabled) use a new id and a negative payout.'
+  },
+  lootably: {
+    name: 'Lootably',
+    secret: process.env.LOOTABLY_POSTBACK_SECRET || '',
+    style: 'lootably',
+    enabled: !!process.env.LOOTABLY_POSTBACK_SECRET,
+    successBody: '1',
+    notes: 'Public docs: GET postback, sha256(userID + ip + revenue + currencyReward + postback secret) compared to {hash}. Credit publisher USD from {revenue}, not {currencyReward}. Respond with the plain text 1.'
+  },
+  theoremreach: {
+    name: 'TheoremReach',
+    secret: process.env.THEOREMREACH_SECRET || '',
+    style: 'generic',
+    enabled: !!process.env.THEOREMREACH_SECRET,
+    notes: 'TODO: TheoremReach documents HMAC-secured offerwall callbacks, but I could not confirm exact parameter names or the HMAC formula from the public pages I could open. Confirm official docs in the publisher dashboard before enabling.'
   }
 };
 

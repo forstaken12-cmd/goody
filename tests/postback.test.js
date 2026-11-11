@@ -11,12 +11,21 @@ const BITLABS_SECRET = 'JLOIAUNMHFli7ZJOQVEzm98rzqnm9';
 const CPX_SECRET = 'cpx-test-hash';
 const ADGEM_SECRET = 'adgem-postback-key';
 
-let app, server, base, token, publicId;
+let app, server, base, token, publicId, cookie;
 
 function listen(a) {
   return new Promise((resolve) => {
     const s = a.listen(0, '127.0.0.1', () => resolve(s));
   });
+}
+
+function readCookie(res) {
+  const raw = res.headers.getSetCookie ? res.headers.getSetCookie() : (res.headers.get('set-cookie') ? [res.headers.get('set-cookie')] : []);
+  for (const c of raw || []) {
+    const m = String(c).match(/goody_session=([^;]+)/);
+    if (m) return m[1];
+  }
+  return '';
 }
 
 async function json(method, url, body, headers) {
@@ -28,7 +37,7 @@ async function json(method, url, body, headers) {
   const text = await res.text();
   let data;
   try { data = JSON.parse(text); } catch { data = { raw: text }; }
-  return { status: res.status, data };
+  return { status: res.status, data, res, cookie: readCookie(res) };
 }
 
 before(async () => {
@@ -58,18 +67,29 @@ before(async () => {
   base = `http://127.0.0.1:${port}`;
   app.locals.config.publicBaseUrl = base;
 
-  const ses = await json('POST', '/api/session', { deviceId: 'device-postback-test-001' });
-  assert.equal(ses.status, 200);
-  token = ses.data.token;
-  publicId = ses.data.publicId;
+  const ses = await json('POST', '/api/auth/signup', {
+    email: 'postback@example.com',
+    password: 'password12',
+    agreeTerms: true,
+    ageConfirm: true
+  });
+  assert.equal(ses.status, 200, ses.data);
+  cookie = ses.cookie;
+  publicId = ses.data.user.publicId;
+  token = cookie;
+  // Confirm email so cash-out tests can run
+  const raw = app.locals.mailer.last.link;
+  const tok = raw && raw.split('token=')[1];
+  const ver = await json('POST', '/api/auth/verify', { token: tok });
+  assert.equal(ver.status, 200, ver.data);
 });
 
 after(async () => {
-  if (app && app.close) app.close();
+  if (app && app.close) await app.close();
   if (server) await new Promise((r) => server.close(r));
 });
 
-function auth() { return { authorization: 'Bearer ' + token }; }
+function auth() { return { cookie: 'goody_session=' + cookie, authorization: 'Bearer ' + cookie }; }
 
 test('signed demo postback credits the user share only', async () => {
   const payout = 1.2;

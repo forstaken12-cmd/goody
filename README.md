@@ -2,14 +2,16 @@
 
 A rewards app: people finish little tasks (install an app, play for a while, or take a survey). The offer partner pays us, and we pass most of that on as points. People can then ask to cash out.
 
-This is the real project shape (a Node server + a phone-sized web app). The built-in **demo partner** lets you try the whole path without real partner accounts. No real money is sent yet.
+This is the real project (a Node server + a phone-sized web app). The built-in **demo partner** lets you try the whole path without real partner accounts. No real money is sent until you connect payout providers and approve requests.
+
+The live site is [https://goody-dfi5.onrender.com](https://goody-dfi5.onrender.com). It auto-deploys from the `main` branch of this repo.
 
 ## How to run
 
 You need Node.js 20 or later.
 
 ```bash
-cd /workspace/goody
+cd goody
 npm install
 cp .env.example .env    # optional; defaults work for a local demo
 npm start
@@ -19,6 +21,8 @@ Then open [http://localhost:3000](http://localhost:3000) on your phone or in a n
 
 - App: http://localhost:3000
 - Admin: http://localhost:3000/admin (password from `ADMIN_PASSWORD`, default `change-me-admin`)
+- Terms: http://localhost:3000/terms
+- Privacy: http://localhost:3000/privacy
 
 Run the automated tests:
 
@@ -26,67 +30,69 @@ Run the automated tests:
 npm test
 ```
 
-The database is a SQLite file at `data/goody.sqlite` (created on first run). We use [sql.js](https://github.com/sql-js/sql.js) (SQLite compiled to WebAssembly) so you don’t need a native build toolchain. You can point `DB_PATH` at another file.
-
 Stop the server with Ctrl+C.
 
 ## How it works
 
-1. The first time someone opens the app, the server makes a simple **device account** (one account per device id). Real sign-in and email checks are not built yet.
-2. Offers come from partners. In demo mode, the app itself serves a fake catalog and **signs postbacks** the same way a real partner would.
-3. When a task is finished, the partner calls `GET` or `POST /postback/:partner` with a user id, a transaction id, an amount in USD, a status, and a signature.
-4. The server checks the signature, applies the **user share** (default 70%), and writes an append-only **ledger** row. Status starts as `pending` (checking) and becomes `paid` or `rejected`.
-5. The balance is **only** the sum of paid credits minus paid (or held) debits. The server never invents points.
-6. A reversal / chargeback with the same transaction id marks that credit `rejected`, even if it was already paid.
-7. The same transaction id will not be paid twice (idempotent).
-8. Cash out is a **request**. Points are held immediately. An admin approves or rejects it, then marks it sent. There is no Lightning, PayPal, or gift-card payout hooked up yet.
-9. The **first** cash out can be smaller (default **$0.50**). After that, the usual minimums apply (Bitcoin $0.80, PayPal $1.20, gift card $2.00).
-10. Daily check-in, streaks, and daily goals also go through the demo partner as signed postbacks, so those gifts still come from a “partner payment,” not from thin air.
+1. People create an account with email and password, agree to the Terms, and confirm they are 18 or older. Passwords are hashed. Sign-in uses an httpOnly session cookie.
+2. We send an email to confirm the address when an email provider is configured. If it is not, the server logs the link and the app shows a friendly note. Password reset works the same way.
+3. Offers come from partners. In demo mode, the app serves a fake catalog and **signs postbacks** the same way a real partner would.
+4. When a task is finished, the partner calls `GET` or `POST /postback/:partner` with a user id, a transaction id, an amount in USD, a status, and a signature.
+5. The server checks the signature, applies the **user share** (default 70%), and writes an append-only **ledger** row. Status starts as `pending` (checking) and becomes `paid` or `rejected`. A reversal marks that credit rejected. The same transaction id will not be paid twice.
+6. The balance is **only** the sum of paid credits minus paid (or held) debits. The server never invents points.
+7. Cash out is a **request**. Email must be confirmed first. Points are held immediately. An admin approves or rejects it. If PayPal, Tremendous, or ZBD/ZEBEDEE keys are not set, approval is marked **“Approved, send manually.”** If keys are set, the matching adapter can send the payout. There is no automatic sending until those keys are present.
+8. The **first** cash out can be smaller (default **$0.50**). After that, the usual minimums apply.
+9. Daily check-in, streaks, and daily goals also go through the demo partner as signed postbacks, so those gifts still come from a “partner payment,” not from thin air.
+
+### Database
+
+- If `DATABASE_URL` is a real `postgres://` or `postgresql://` URL and the server can connect, Goody uses Postgres.
+- Otherwise it uses a local [sql.js](https://github.com/sql-js/sql.js) file (`data/goody.sqlite` by default) and logs a clear warning. The app will not crash because of a missing, placeholder, or broken `DATABASE_URL`.
+- Tables are created on startup. Extra columns are added if they are missing.
+
+A free Render Postgres instance named `goody-db` was set up for this app. **Render’s free Postgres expires on 2026-12-11.** After that you will need a paid database or another host, or the app will fall back to sql.js (which does not keep data across deploys on Render).
 
 ### Postbacks
 
 Generic demo signature (HMAC-SHA256 of `uid|txid|payout|status`) is used by the built-in simulator.
 
-Configs for real networks live in `server/config.js`:
-
-- **BitLabs** — HMAC-SHA1 of the full callback URL, excluding `&hash=` (from their public docs).
-- **AdGem** — v3 POST: `Signature` header is HMAC-SHA256 of the raw body (from their public docs). v2 GET `verifier` is also accepted.
-- **CPX Research** — `md5(trans_id + "-" + app secure hash)` and `status=2` for a cancel (from publisher docs/examples; re-check the live dashboard at launch).
-- **Ayet Studios** and **Torox** — placeholders only. Confirm official parameter names and signatures before turning them on.
-
-Set the matching secret in the environment and point the partner’s dashboard at:
-
-```
-https://your-host/postback/bitlabs
-https://your-host/postback/adgem
-https://your-host/postback/cpx
-```
+See **PARTNERS.md** for who to apply to, what they usually ask for, and the exact live postback URLs on goody-dfi5.onrender.com.
 
 ## What’s real today vs still TODO before launch
 
-**Works now (with the demo partner):**
+**Works now:**
 
-- Device accounts, points ledger, pending → paid → rejected
-- Offer list with filters (Games / Apps / Surveys) and sort (highest pay, quickest, newest)
-- Playtime offers paid in milestones
-- Streaks and daily goals
-- First cash out at $0.50, then normal minimums, checked on the server
-- History screen
-- Admin page to review users, the ledger, and cash-out requests
-- Signed, idempotent postbacks and reversals
-- Basic rate limits and one account per device
+- Email + password accounts, session cookies, email confirmation and password reset (pluggable mail)
+- Postgres when `DATABASE_URL` is valid, sql.js fallback otherwise
+- Terms of Service and Privacy Policy (templates — have a lawyer review them)
+- 18+ age rule, agreement required at signup
+- Points ledger, pending → paid → rejected, playtime milestones, filters, history, streaks, first $0.50 cash out
+- Admin page, including payout status and “Approved, send manually” when providers are not connected
+- Payout adapters ready for PayPal Payouts, Tremendous, and ZBD / ZEBEDEE (not called unless keys are set)
+- Signed, idempotent postbacks and reversals, including Lootably and Torox verifiers from their public docs
+- Basic rate limits and a device-fingerprint note
 
 **Still needed before a real launch:**
 
-- Real partner accounts (BitLabs, AdGem, Ayet Studios, Torox, CPX Research, or others) and a production postback URL with HTTPS
-- Confirm any leftover official parameter names (especially Ayet, Torox, and BitLabs reversal/chargeback types)
-- Real payout providers (Lightning, PayPal, gift cards) — admin “mark sent” does not move money
-- Real sign-in (email / phone / Apple / Google) and email or phone verification; replace the anonymous device account
-- Hosting, backups, monitoring, and a proper process for the SQLite file (or a hosted database)
-- App store wrapping (Capacitor, React Native, or a store webview) if you want iOS/Android listings
-- Legal: terms, privacy policy, age gates, and how you handle tax and identity for payouts
-- Stronger anti-abuse (device/IP farms, VPN checks, offer completion timing, partner-side fraud tools)
-- A password and secrets manager — change `ADMIN_PASSWORD` and `DEMO_PARTNER_SECRET` before exposing the server
-- Accessibility and localization polish on a real device
+- A valid `DATABASE_URL` pointing at Postgres, and a plan for when free Render Postgres expires on 2026-12-11
+- `PUBLIC_BASE_URL=https://goody-dfi5.onrender.com` if it is not already picked up from Render
+- An email provider (`MAIL_FROM` plus `SMTP_URL` or `SENDGRID_API_KEY`) so confirmation and reset links are actually sent
+- Real partner accounts and secrets (see PARTNERS.md). Confirm leftover official details for ayeT-Studios and TheoremReach.
+- Real payout provider keys (PayPal, Tremendous, and/or ZBD). For Lightning, also set `BTC_USD` so the amount can be converted. Admin “mark sent” or “Approved, send manually” does not move money by itself.
+- Stronger anti-abuse (captcha, phone checks, VPN tools). TheoremReach in particular asks for a captcha or similar on signup.
+- A lawyer review of the Terms and Privacy Policy, a real contact email in the Privacy Policy, and tax / identity handling for payouts
+- App store wrapping if you want iOS/Android listings
+- Hosting upgrades (Render’s free web service can spin down when idle), backups, and monitoring
+- Change default secrets before exposing any new environment
 
-The older single-file prototypes are not this app. This project in `/workspace/goody` is the starting point for the real service.
+## Env vars the operator still needs to supply
+
+Never put real secrets in git. Set these in the Render dashboard (or your `.env` locally):
+
+- `DATABASE_URL` — a real `postgres://` or `postgresql://` connection string (if this is a placeholder, the app falls back to sql.js)
+- `PUBLIC_BASE_URL` — `https://goody-dfi5.onrender.com` (recommended)
+- `MAIL_FROM` and either `SMTP_URL` / `SMTP_HOST`+`SMTP_USER`+`SMTP_PASS`, or `SENDGRID_API_KEY`
+- Payout keys, when you are ready: `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_ENV`; `TREMENDOUS_API_KEY`, `TREMENDOUS_CAMPAIGN_ID`, `TREMENDOUS_ENV`; `ZBD_API_KEY` or `ZEBEDEE_API_KEY`, plus `BTC_USD`
+- Partner secrets, when you are approved: `BITLABS_SECRET`, `ADGEM_POSTBACK_KEY`, `CPX_SECURE_HASH`, `TOROX_SECRET`, `LOOTABLY_POSTBACK_SECRET`, and later `AYET_SECRET` / `THEOREMREACH_SECRET` after you confirm official docs
+
+`ADMIN_PASSWORD` and `DEMO_PARTNER_SECRET` should already be set on the live service.

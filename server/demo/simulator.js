@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const { signGeneric } = require('../lib/postback');
 const { findOffer } = require('./catalog');
+const { isoNow } = require('../lib/money');
 
 function makeTx(prefix) {
   return prefix + '-' + crypto.randomBytes(6).toString('hex');
@@ -14,12 +15,12 @@ function createSimulator({ config, ingest, db }) {
 
   function later(ms, fn) {
     if (!ms || ms <= 0) {
-      fn();
+      Promise.resolve().then(fn).catch((e) => console.warn('demo postback', e.message));
       return { unref() {} };
     }
     const t = setTimeout(() => {
       timers.delete(t);
-      fn();
+      Promise.resolve().then(fn).catch((e) => console.warn('demo postback', e.message));
     }, ms);
     timers.add(t);
     if (t.unref) t.unref();
@@ -52,7 +53,7 @@ function createSimulator({ config, ingest, db }) {
     });
   }
 
-  function startInstall(user, offer, { outcome } = {}) {
+  async function startInstall(user, offer, { outcome } = {}) {
     if (!offer) throw Object.assign(new Error('Unknown offer'), { http: 404 });
     const uid = user.public_id;
     const txid = makeTx(offer.id);
@@ -60,11 +61,11 @@ function createSimulator({ config, ingest, db }) {
     if (!result) {
       result = Math.random() < config.demoRejectRate ? 'rejected' : 'paid';
     }
-    db.run(
+    await db.run(
       `INSERT INTO offer_progress (user_id, offer_id, started_at, minutes_played, steps_done, status)
-       VALUES (?, ?, datetime('now'), 0, 0, 'running')
+       VALUES (?, ?, ?, 0, 0, 'running')
        ON CONFLICT(user_id, offer_id) DO UPDATE SET started_at = excluded.started_at, status = 'running'`,
-      [user.id, offer.id]
+      [user.id, offer.id, isoNow()]
     );
     scheduleSettlement({
       uid, txid, payout: offer.partnerUsd, offerId: offer.id,
@@ -75,22 +76,22 @@ function createSimulator({ config, ingest, db }) {
     return { txid, outcome: result };
   }
 
-  function play(user, offer, addMinutes) {
+  async function play(user, offer, addMinutes) {
     if (!offer || offer.type !== 'playtime') {
       throw Object.assign(new Error('That is not a playtime offer'), { http: 400 });
     }
-    let prog = db.get('SELECT * FROM offer_progress WHERE user_id = ? AND offer_id = ?', [user.id, offer.id]);
+    let prog = await db.get('SELECT * FROM offer_progress WHERE user_id = ? AND offer_id = ?', [user.id, offer.id]);
     if (!prog) {
-      db.run(
+      await db.run(
         `INSERT INTO offer_progress (user_id, offer_id, started_at, minutes_played, steps_done, status)
-         VALUES (?, ?, datetime('now'), 0, 0, 'running')`,
-        [user.id, offer.id]
+         VALUES (?, ?, ?, 0, 0, 'running')`,
+        [user.id, offer.id, isoNow()]
       );
-      prog = db.get('SELECT * FROM offer_progress WHERE user_id = ? AND offer_id = ?', [user.id, offer.id]);
+      prog = await db.get('SELECT * FROM offer_progress WHERE user_id = ? AND offer_id = ?', [user.id, offer.id]);
     }
     const before = prog.minutes_played || 0;
     const after = before + Math.max(0, Number(addMinutes) || 0);
-    db.run('UPDATE offer_progress SET minutes_played = ?, status = ? WHERE user_id = ? AND offer_id = ?', [
+    await db.run('UPDATE offer_progress SET minutes_played = ?, status = ? WHERE user_id = ? AND offer_id = ?', [
       after, 'running', user.id, offer.id
     ]);
     const fired = [];
@@ -111,7 +112,7 @@ function createSimulator({ config, ingest, db }) {
     }
     const last = offer.milestones && offer.milestones[offer.milestones.length - 1];
     if (last && after >= last.minutes) {
-      db.run('UPDATE offer_progress SET status = ? WHERE user_id = ? AND offer_id = ?', [
+      await db.run('UPDATE offer_progress SET status = ? WHERE user_id = ? AND offer_id = ?', [
         'done', user.id, offer.id
       ]);
     }

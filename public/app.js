@@ -28,7 +28,7 @@
     if (n > 0 && n < 0.01) return '< $0.01';
     return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
-  function deviceId() {
+  function fingerprint() {
     let id = localStorage.getItem('goody-device-id');
     if (!id) {
       id = (crypto.randomUUID && crypto.randomUUID()) || ('dev-' + Math.random().toString(36).slice(2) + Date.now());
@@ -40,7 +40,7 @@
     return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
 
-  let token = localStorage.getItem('goody-token') || '';
+  let signedIn = false;
   let me = null;
   let offers = [];
   let history = [];
@@ -60,18 +60,20 @@
     opts = opts || {};
     const headers = { Accept: 'application/json' };
     if (opts.body != null) headers['Content-Type'] = 'application/json';
-    if (token) headers.Authorization = 'Bearer ' + token;
     const res = await fetch(path, {
       method: opts.method || (opts.body ? 'POST' : 'GET'),
+      credentials: 'same-origin',
       headers,
       body: opts.body != null ? JSON.stringify(opts.body) : undefined
     });
     const data = await res.json().catch(() => ({}));
-    if (res.status === 401 && path !== '/api/session') {
-      token = '';
-      localStorage.removeItem('goody-token');
-      await session();
-      if (token) return api(path, opts);
+    if (res.status === 401 && !opts.allow401) {
+      signedIn = false;
+      showAuth('signup');
+      const err = new Error(data.error || 'Please sign in.');
+      err.status = 401;
+      err.data = data;
+      throw err;
     }
     if (!res.ok) {
       const err = new Error(data.error || 'Something went wrong');
@@ -82,11 +84,31 @@
     return data;
   }
 
-  async function session() {
-    const s = await api('/api/session', { method: 'POST', body: { deviceId: deviceId() } });
-    token = s.token;
-    localStorage.setItem('goody-token', token);
-    return s;
+  function showAuth(which) {
+    const ov = $('auth-overlay');
+    if (ov) ov.classList.add('show');
+    const su = $('form-signup'), li = $('form-login'), fo = $('form-forgot');
+    if (!su) return;
+    su.hidden = which !== 'signup';
+    li.hidden = which !== 'login';
+    fo.hidden = which !== 'forgot';
+    $('auth-title').textContent = which === 'login' ? 'Welcome back' : (which === 'forgot' ? 'Reset password' : 'Goody');
+    $('auth-lead').textContent = which === 'login'
+      ? 'Sign in to see your points.'
+      : (which === 'forgot' ? 'We’ll email a link if that account exists.' : 'Do little tasks. Get points. Cash out when you’re ready.');
+  }
+
+  function hideAuth() {
+    const ov = $('auth-overlay');
+    if (ov) ov.classList.remove('show');
+  }
+
+  async function afterSignIn() {
+    signedIn = true;
+    hideAuth();
+    await refresh();
+    await loadOffers();
+    requestAnimationFrame(moveTabInk);
   }
 
   async function refresh() {
@@ -207,6 +229,8 @@
     $('demo-badge').hidden = !demo;
     const welc = $('welcome-demo');
     if (welc) welc.hidden = !demo;
+    const vb = $('verify-banner');
+    if (vb) vb.hidden = !!(me.emailVerified);
     const pts = me.balance.available;
     if (reduced() || pts === shownPts) {
       shownPts = pts;
@@ -342,9 +366,11 @@
     const to = ($('pay-to').value || '').trim();
     const okTo = /@/.test(to) || /^ln/i.test(to);
     const okAmt = me && me.balance.available >= minPts;
-    $('btn-cash').disabled = !(okTo && okAmt);
+    const verified = me && me.emailVerified;
+    $('btn-cash').disabled = !(okTo && okAmt && verified);
     let msg = '';
-    if (to && !okTo) msg = 'Enter a real-looking address or email.';
+    if (me && !verified) msg = 'Please confirm your email before you cash out.';
+    else if (to && !okTo) msg = 'Enter a real-looking address or email.';
     else if (to && !okAmt) msg = 'Need ' + fmt(minPts) + ' points for this one.';
     $('wd-msg').textContent = msg;
     document.querySelectorAll('.pay-opt').forEach((b) => b.classList.toggle('on', b.getAttribute('data-pay') === currentPay));
@@ -477,12 +503,87 @@
       $('btn-mute').setAttribute('aria-label', 'Mute');
     }
   }
-  $('btn-gear').addEventListener('click', () => { renderHow(); $('how-overlay').classList.add('show'); });
+  function renderAccount() {
+    if (!me) return;
+    $('acct-email').textContent = me.email || '';
+    $('acct-verify').textContent = me.emailVerified ? 'Email confirmed.' : 'Please confirm your email. Check the server log if email is not set up yet.';
+  }
+  $('btn-gear').addEventListener('click', () => { renderAccount(); $('account-overlay').classList.add('show'); });
+  $('btn-account-close').addEventListener('click', () => $('account-overlay').classList.remove('show'));
+  $('btn-how').addEventListener('click', () => {
+    $('account-overlay').classList.remove('show');
+    renderHow();
+    $('how-overlay').classList.add('show');
+  });
   $('btn-how-close').addEventListener('click', () => $('how-overlay').classList.remove('show'));
-  $('btn-start').addEventListener('click', () => {
-    ctx();
-    $('welcome').classList.remove('show');
-    localStorage.setItem('goody-seen-welcome', '1');
+  $('btn-logout').addEventListener('click', async () => {
+    try { await api('/api/auth/logout', { method: 'POST', body: {} }); } catch (e) { /* still leave */ }
+    me = null;
+    signedIn = false;
+    $('account-overlay').classList.remove('show');
+    showAuth('login');
+  });
+  $('go-login').addEventListener('click', () => showAuth('login'));
+  $('go-signup').addEventListener('click', () => showAuth('signup'));
+  $('go-forgot').addEventListener('click', () => showAuth('forgot'));
+  $('fo-back').addEventListener('click', () => showAuth('login'));
+  $('form-signup').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('su-err').textContent = '';
+    try {
+      const data = await api('/api/auth/signup', { method: 'POST', body: {
+        email: $('su-email').value,
+        password: $('su-pass').value,
+        agreeTerms: $('su-agree').checked,
+        ageConfirm: $('su-age').checked,
+        fingerprint: fingerprint()
+      }});
+      ctx();
+      if (data.mailNote) toast('Account created', data.mailNote);
+      else toast('Account created', 'Check your email to confirm it.');
+      await afterSignIn();
+    } catch (err) { $('su-err').textContent = err.message; }
+  });
+  $('form-login').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('li-err').textContent = '';
+    try {
+      await api('/api/auth/login', { method: 'POST', body: {
+        email: $('li-email').value,
+        password: $('li-pass').value,
+        fingerprint: fingerprint()
+      }});
+      ctx();
+      await afterSignIn();
+    } catch (err) { $('li-err').textContent = err.message; }
+  });
+  $('form-forgot').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('fo-err').textContent = '';
+    $('fo-ok').textContent = '';
+    try {
+      const data = await api('/api/auth/forgot', { method: 'POST', body: { email: $('fo-email').value } });
+      $('fo-ok').textContent = data.mailNote || data.message || 'If that email has an account, we will send a reset link.';
+    } catch (err) { $('fo-err').textContent = err.message; }
+  });
+  $('btn-resend').addEventListener('click', async () => {
+    try {
+      const data = await api('/api/auth/resend', { method: 'POST', body: {} });
+      toast('Link ready', data.mailNote || 'Check your email.');
+    } catch (err) { toast('Couldn’t send', err.message); }
+  });
+  $('verify-done').addEventListener('click', () => $('verify-overlay').classList.remove('show'));
+  $('form-reset').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('rs-err').textContent = '';
+    const params = new URLSearchParams(location.search);
+    try {
+      await api('/api/auth/reset', { method: 'POST', body: { token: params.get('token'), password: $('rs-pass').value } });
+      toast('Password saved', 'You can sign in now.');
+      $('reset-overlay').classList.remove('show');
+      showAuth('login');
+      if (history.replaceState) history.replaceState({}, '', '/');
+    } catch (err) { $('rs-err').textContent = err.message; }
   });
   $('btn-daily').addEventListener('click', async () => {
     try {
@@ -574,20 +675,52 @@
   window.addEventListener('resize', moveTabInk);
 
   $('mascot').innerHTML = MASCOT_SVG;
-  $('welcome-mascot').innerHTML = MASCOT_SVG;
-  if (localStorage.getItem('goody-seen-welcome')) $('welcome').classList.remove('show');
+  if ($('welcome-mascot')) $('welcome-mascot').innerHTML = MASCOT_SVG;
   renderMute();
 
   window.__GOODY = {
     get me() { return me; },
     goto: showTab,
     refresh, loadOffers, loadHistory, openOffer, startOffer, playOffer,
-    get token() { return token; }
+    showAuth, afterSignIn
   };
 
-  session()
-    .then(() => refresh())
-    .then(() => loadOffers())
-    .then(() => { requestAnimationFrame(moveTabInk); })
-    .catch((e) => toast('Couldn’t load', e.message));
+  async function boot() {
+    try {
+      const cfg = await fetch('/api/config', { credentials: 'same-origin' }).then((r) => r.json());
+      if ($('welcome-demo')) $('welcome-demo').hidden = !cfg.demo;
+      if ($('demo-badge') && !signedIn) $('demo-badge').hidden = !cfg.demo;
+    } catch (e) { /* ignore */ }
+    const path = location.pathname;
+    const params = new URLSearchParams(location.search);
+    if (path === '/reset' && params.get('token')) {
+      $('reset-overlay').classList.add('show');
+    }
+    if (path === '/verify' && params.get('token')) {
+      $('verify-overlay').classList.add('show');
+      try {
+        await api('/api/auth/verify', { method: 'POST', body: { token: params.get('token') } });
+        $('verify-msg').textContent = 'Your email is confirmed. Thank you.';
+        if (history.replaceState) history.replaceState({}, '', '/');
+      } catch (e) {
+        $('verify-msg').textContent = e.message || 'This link is old or already used.';
+      }
+    }
+    try {
+      const st = await fetch('/api/auth/status', { credentials: 'same-origin' }).then((r) => r.json());
+      if (!st.signedIn) {
+        showAuth(path === '/reset' ? 'login' : 'signup');
+        return;
+      }
+      await refresh();
+      await loadOffers();
+      requestAnimationFrame(moveTabInk);
+    } catch (e) {
+      showAuth(path === '/reset' ? 'login' : 'signup');
+    }
+  }
+  boot().catch((e) => {
+    showAuth('signup');
+    if (e && e.status !== 401) toast('Couldn’t load', e.message);
+  });
 })();

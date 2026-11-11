@@ -20,7 +20,7 @@
 <body>
   <div id="admin">
     <h1>Goody admin</h1>
-    <p class="note">Look at users and the ledger. Approve or reject cash out requests. Nothing is sent for real yet.</p>
+    <p class="note">Look at users and the ledger. Approve or reject cash out requests. If a payout provider is not connected, approve will mark it “Approved, send manually.”</p>
     <form id="login" class="card" style="margin-top:16px;max-width:360px">
       <label class="field" for="pw">Password</label>
       <input class="ln" id="pw" type="password" autocomplete="current-password" />
@@ -28,6 +28,7 @@
       <button class="btn-block" type="submit">Sign in</button>
     </form>
     <div id="desk" hidden>
+      <div class="card compact" id="pay-status" style="margin:16px 0"></div>
       <div class="tabs-admin">
         <button class="chip on" data-panel="cash">Cash outs</button>
         <button class="chip" data-panel="users">Users</button>
@@ -76,22 +77,38 @@
       await adminApi('/admin/api/cashouts/' + id + '/' + verb, {});
       await loadAll();
     }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    }
+    function payLabel(on, name, hint) {
+      return '<div style="margin:4px 0"><strong>' + esc(name) + ':</strong> ' + (on ? 'Connected' : 'Not connected — approvals will be marked “Approved, send manually.”') + (hint && on ? ' ' + esc(hint) : '') + '</div>';
+    }
     async function loadAll() {
-      const [c, u, l] = await Promise.all([
+      const [c, u, l, st] = await Promise.all([
         adminApi('/admin/api/cashouts'),
         adminApi('/admin/api/users'),
-        adminApi('/admin/api/ledger')
+        adminApi('/admin/api/ledger'),
+        adminApi('/admin/api/status')
       ]);
+      const p = st.payouts || c.payouts || {};
+      $('pay-status').innerHTML = '<h3>Payouts</h3>' +
+        '<p class="note">Database: ' + esc(st.db) + (st.mail ? ' · Email is on' : ' · Email is off (links go to the server log)') + '</p>' +
+        payLabel(p.paypal, 'PayPal Payouts') +
+        payLabel(p.tremendous, 'Tremendous (gift cards)') +
+        payLabel(p.zebedee, 'ZBD / ZEBEDEE (Bitcoin Lightning)');
       $('cash-tbl').innerHTML = table(
-        ['Id','User','Method','To','Points','Status','When','Actions'],
+        ['Id','User','Method','To','Points','Status','Note','When','Actions'],
         c.cashouts.map((r) => [
-          r.id, r.user_id, r.method, r.destination, r.points, r.status, r.created_at,
+          r.id, r.user_id, r.method, r.destination, r.points,
+          r.status + (r.payout_mode === 'manual' && r.status === 'approved' ? ' · send manually' : ''),
+          r.admin_note || '',
+          r.created_at,
           actions(r)
         ])
       );
       $('user-tbl').innerHTML = table(
-        ['Id','Public id','Device','Available','Pending','First cash out','Created'],
-        u.users.map((r) => [r.id, r.public_id, r.device_id, r.balance.available, r.balance.pending, r.first_cashout_at || '—', r.created_at])
+        ['Id','Email','Public id','Verified','Available','Pending','Device note','First cash out','Created'],
+        u.users.map((r) => [r.id, r.email || '—', r.public_id, r.email_verified_at ? 'yes' : 'no', r.balance.available, r.balance.pending, r.device_note || r.device_fingerprint || '—', r.first_cashout_at || '—', r.created_at])
       );
       $('led-tbl').innerHTML = table(
         ['Id','User','Type','Status','Source','Partner','Tx','Points','Note','When'],
@@ -106,7 +123,7 @@
     function table(heads, rows) {
       if (!rows.length) return '<p class="empty">None yet</p>';
       return '<table><thead><tr>' + heads.map((h) => '<th>'+h+'</th>').join('') + '</tr></thead><tbody>' +
-        rows.map((r) => '<tr>' + r.map((c) => '<td>'+c+'</td>').join('') + '</tr>').join('') + '</tbody></table>';
+        rows.map((r) => '<tr>' + r.map((c, i) => '<td>'+(String(c).startsWith('<div') ? c : esc(c))+'</td>').join('') + '</tr>').join('') + '</tbody></table>';
     }
     $('desk').addEventListener('click', async (e) => {
       const b = e.target.closest('[data-a]');

@@ -28,7 +28,7 @@
             <path d="M18 6a8 8 0 010 12"/>
           </svg>
         </button>
-        <button class="icon-btn" id="btn-gear" aria-label="How it works" title="How it works">
+        <button class="icon-btn" id="btn-gear" aria-label="Account" title="Account">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <circle cx="12" cy="12" r="9"/>
             <path d="M12 10v6M12 8h.01"/>
@@ -39,6 +39,7 @@
 
     <div class="screens">
       <section class="screen active" id="screen-home" data-tab="home">
+        <div class="callout" id="verify-banner" hidden>Please confirm your email so you can cash out later. <button type="button" class="linkish" id="btn-resend">Send the link again</button></div>
         <div class="hero-card">
           <div class="home-hero">
             <div class="mascot idle" id="mascot" aria-hidden="true"></div>
@@ -150,13 +151,78 @@
     </nav>
   </div>
 
-  <div class="overlay show" id="welcome">
-    <div class="modal">
+  <div class="overlay show" id="auth-overlay">
+    <div class="modal left" id="auth-modal">
       <div class="hero-coin" id="welcome-mascot"></div>
-      <h2>Goody</h2>
-      <p>Do little tasks. Get points. Cash out when you’re ready. Partners pay us when you finish — you get most of it.</p>
-      <p class="note" style="margin-top:8px" id="welcome-demo">This is a demo. No real money is sent.</p>
-      <button class="btn-block" id="btn-start">Let’s go!</button>
+      <h2 id="auth-title">Goody</h2>
+      <p id="auth-lead">Do little tasks. Get points. Cash out when you’re ready.</p>
+      <p class="note" id="welcome-demo">This is a demo. No real money is sent.</p>
+
+      <form id="form-signup" autocomplete="on">
+        <label class="field" for="su-email">Email</label>
+        <input class="ln" id="su-email" type="email" required autocomplete="email" />
+        <label class="field" for="su-pass">Password</label>
+        <input class="ln" id="su-pass" type="password" required minlength="8" autocomplete="new-password" />
+        <label class="check"><input type="checkbox" id="su-age" /> I am 18 or older</label>
+        <label class="check"><input type="checkbox" id="su-agree" /> I agree to the <a href="/terms" target="_blank" rel="noopener">Terms</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a></label>
+        <p class="note err" id="su-err"></p>
+        <button class="btn-block" type="submit" id="btn-signup">Create account</button>
+        <p class="note center-note">Already have an account? <button type="button" class="linkish" id="go-login">Sign in</button></p>
+      </form>
+
+      <form id="form-login" hidden autocomplete="on">
+        <label class="field" for="li-email">Email</label>
+        <input class="ln" id="li-email" type="email" required autocomplete="email" />
+        <label class="field" for="li-pass">Password</label>
+        <input class="ln" id="li-pass" type="password" required autocomplete="current-password" />
+        <p class="note err" id="li-err"></p>
+        <button class="btn-block" type="submit" id="btn-login">Sign in</button>
+        <p class="note center-note"><button type="button" class="linkish" id="go-forgot">Forgot password?</button></p>
+        <p class="note center-note">New here? <button type="button" class="linkish" id="go-signup">Create an account</button></p>
+      </form>
+
+      <form id="form-forgot" hidden>
+        <p>We’ll send a reset link if that email has an account.</p>
+        <label class="field" for="fo-email">Email</label>
+        <input class="ln" id="fo-email" type="email" required autocomplete="email" />
+        <p class="note err" id="fo-err"></p>
+        <p class="note" id="fo-ok"></p>
+        <button class="btn-block" type="submit">Send link</button>
+        <p class="note center-note"><button type="button" class="linkish" id="fo-back">Back to sign in</button></p>
+      </form>
+    </div>
+  </div>
+
+  <div class="overlay" id="verify-overlay">
+    <div class="modal" id="verify-modal">
+      <h2>Confirm your email</h2>
+      <p id="verify-msg">One moment…</p>
+      <button class="btn-block" id="verify-done">Okay</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="reset-overlay">
+    <div class="modal left" id="reset-modal">
+      <h2>Pick a new password</h2>
+      <form id="form-reset">
+        <label class="field" for="rs-pass">New password</label>
+        <input class="ln" id="rs-pass" type="password" required minlength="8" autocomplete="new-password" />
+        <p class="note err" id="rs-err"></p>
+        <button class="btn-block" type="submit">Save password</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="overlay" id="account-overlay">
+    <div class="modal left" id="account-modal">
+      <h2 style="text-align:center">Account</h2>
+      <p class="note" id="acct-email"></p>
+      <p class="note" id="acct-verify"></p>
+      <button class="btn-block" id="btn-how">How it works</button>
+      <a class="btn-block ghost-link" href="/terms">Terms of Service</a>
+      <a class="btn-block ghost-link" href="/privacy">Privacy Policy</a>
+      <button class="btn-block ghost" id="btn-logout">Log out</button>
+      <button class="btn-block" id="btn-account-close">Close</button>
     </div>
   </div>
 
