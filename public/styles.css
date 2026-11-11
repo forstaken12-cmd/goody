@@ -1066,3 +1066,7 @@ html.legal-page, body.legal-page {
   line-height: 1.4;
   margin: 0 0 12px;
 }
+
+/* Cloudflare Turnstile (managed, auto theme, centered) */
+.ts-box { display: flex; justify-content: center; margin: 14px 0 2px; min-height: 65px; }
+.ts-box[hidden] { display: none; }

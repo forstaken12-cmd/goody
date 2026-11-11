@@ -191,6 +191,7 @@
         <label class="check"><input type="checkbox" id="su-age" /> I am 18 or older</label>
         <label class="check"><input type="checkbox" id="su-agree" /> I agree to the <a href="/terms" target="_blank" rel="noopener">Terms</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a></label>
       </div>
+      <div class="ts-box" id="ts-auth" hidden></div>
       <p class="oauth-or" id="oauth-or">or use your email</p>
 
       <form id="form-signup" class="email-fallback" autocomplete="on">
@@ -218,6 +219,7 @@
         <p>We’ll send a reset link if that email has an account.</p>
         <label class="field" for="fo-email">Email</label>
         <input class="ln" id="fo-email" type="email" required autocomplete="email" />
+        <div class="ts-box" id="ts-forgot" hidden></div>
         <p class="note err" id="fo-err"></p>
         <p class="note" id="fo-ok"></p>
         <button class="btn-block" type="submit">Send link</button>

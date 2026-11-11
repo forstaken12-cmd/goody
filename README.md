@@ -94,6 +94,7 @@ Never put real secrets in git. Set these in the Render dashboard (or your `.env`
 
 - `DATABASE_URL` — a real `postgres://` or `postgresql://` connection string (if this is a placeholder, the app falls back to sql.js)
 - `PUBLIC_BASE_URL` — `https://goody-dfi5.onrender.com` (recommended; required for Google/Apple redirect URLs)
+- Captcha: `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` (Cloudflare Turnstile; off until both are set; see AUTH-SETUP.md)
 - `CONTACT_EMAIL` — shown on Terms, Privacy, and in the app (defaults to `forstaken12@gmail.com`)
 - Google sign-in: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (see AUTH-SETUP.md)
 - Apple sign-in: `APPLE_CLIENT_ID` (Services ID), `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`. Sign in with Apple needs a paid Apple Developer Program membership ($99 USD/year; confirm on Apple’s site). Optional domain-verify file: `APPLE_DOMAIN_ASSOCIATION`

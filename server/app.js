@@ -16,6 +16,7 @@ const goals = require('./lib/goals');
 const { createMailer, healthMail } = require('./lib/mail');
 const payouts = require('./lib/payouts');
 const oauth = require('./lib/oauth');
+const turnstile = require('./lib/turnstile');
 
 const PUBLIC = path.join(__dirname, '..', 'public');
 
@@ -172,7 +173,8 @@ async function createApp(opts) {
       db: db.dialect === 'pg' ? 'postgres' : 'sqlite',
       mail: healthMail(mailer),
       payouts: payoutStatus(),
-      oauth: oauth.providersStatus(cfg)
+      oauth: oauth.providersStatus(cfg),
+      turnstile: turnstile.turnstileEnabled(cfg)
     });
   });
 
@@ -196,9 +198,26 @@ async function createApp(opts) {
       mailEnabled: mailer.enabled,
       minAge: 18,
       contactEmail: contactAddress(cfg),
-      oauth: oauth.providersStatus(cfg)
+      oauth: oauth.providersStatus(cfg),
+      turnstileSiteKey: turnstile.turnstileEnabled(cfg) ? cfg.turnstileSiteKey : null
     });
   });
+
+  async function captchaOk(req, res, opts2) {
+    if (!turnstile.turnstileEnabled(cfg)) return true;
+    const r = await turnstile.verifyTurnstile(cfg, turnstile.tokenFrom(req), {
+      remoteip: req.ip,
+      fetchFn: opts.turnstileFetch
+    });
+    if (r.ok) return true;
+    console.warn('Turnstile check failed | route=' + req.path + ' | codes=' + (r.codes || []).join(','));
+    if (opts2 && opts2.redirect) {
+      oauthFail(res, turnstile.CHECK_MESSAGE);
+    } else {
+      res.status(400).json({ error: turnstile.CHECK_MESSAGE, code: 'CAPTCHA' });
+    }
+    return false;
+  }
 
   function truthyFlag(v) {
     return v === true || v === 1 || v === '1' || v === 'true' || v === 'on' || v === 'yes';
@@ -230,6 +249,7 @@ async function createApp(opts) {
         res.status(400).json({ error: 'Please confirm you are 18 or older and agree to the Terms and Privacy Policy.' });
         return;
       }
+      if (!(await captchaOk(req, res, { redirect: true }))) return;
       const { state, nonce } = await oauth.createOauthState(db, {
         provider,
         agree,
@@ -337,6 +357,7 @@ async function createApp(opts) {
 
   app.post('/api/auth/signup', signupLimit, async (req, res) => {
     try {
+      if (!(await captchaOk(req, res))) return;
       const body = req.body || {};
       const { user, session, verifyToken } = await auth.signup(db, {
         email: body.email,
@@ -361,6 +382,7 @@ async function createApp(opts) {
 
   app.post('/api/auth/login', loginLimit, async (req, res) => {
     try {
+      if (!(await captchaOk(req, res))) return;
       const body = req.body || {};
       const { user, session } = await auth.login(db, {
         email: body.email,
@@ -420,6 +442,7 @@ async function createApp(opts) {
   });
 
   app.post('/api/auth/forgot', forgotLimit, async (req, res) => {
+    if (!(await captchaOk(req, res))) return;
     // Always the same reply so we don't reveal whether the email exists.
     const generic = { ok: true, message: 'If that email has an account, we will send a reset link.' };
     try {

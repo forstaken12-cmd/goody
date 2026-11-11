@@ -96,6 +96,7 @@
     ['oauth-stack', 'oauth-legal', 'oauth-or'].forEach((id) => {
       if ($(id)) $(id).hidden = !showOauth;
     });
+    if ($('ts-auth')) $('ts-auth').hidden = !showOauth || !turnstileSiteKey;
     $('auth-title').textContent = which === 'login' ? 'Welcome back' : (which === 'forgot' ? 'Reset password' : 'Goody');
     $('auth-lead').textContent = which === 'login'
       ? 'Sign in to see your points.'
@@ -111,6 +112,41 @@
       if (el.tagName === 'A') el.setAttribute('href', 'mailto:' + addr);
     });
   }
+
+  let turnstileSiteKey = null;
+  const tsWidgets = {};
+  function setupTurnstile(siteKey) {
+    if (!siteKey) return;
+    turnstileSiteKey = siteKey;
+    ['ts-auth', 'ts-forgot'].forEach((id) => { if ($(id)) $(id).hidden = false; });
+    window.__goodyTsReady = () => {
+      ['ts-auth', 'ts-forgot'].forEach((id) => {
+        const el = $(id);
+        if (!el || tsWidgets[id] != null || !window.turnstile) return;
+        tsWidgets[id] = window.turnstile.render(el, {
+          sitekey: siteKey,
+          theme: 'auto',
+          appearance: 'always'
+        });
+      });
+    };
+    const s = document.createElement('script');
+    s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=__goodyTsReady';
+    s.async = true;
+    s.defer = true;
+    document.head.appendChild(s);
+  }
+  function captchaToken(id) {
+    if (!turnstileSiteKey) return '';
+    if (!window.turnstile || tsWidgets[id] == null) return '';
+    return window.turnstile.getResponse(tsWidgets[id]) || '';
+  }
+  function resetCaptcha(id) {
+    if (window.turnstile && tsWidgets[id] != null) {
+      try { window.turnstile.reset(tsWidgets[id]); } catch (e) { /* ignore */ }
+    }
+  }
+  const CHECK_MSG = 'Please finish the quick check.';
 
   function applyOauthButtons(oauth) {
     oauth = oauth || {};
@@ -128,6 +164,7 @@
   function friendlyAuthError(raw) {
     const s = String(raw || '').trim();
     if (!s) return '';
+    if (/quick check/i.test(s)) return CHECK_MSG;
     if (/cancelled/i.test(s)) return 'Sign-in was cancelled.';
     if (/expired/i.test(s)) return 'That sign-in link expired. Please try again.';
     if (/18 or older|agree to the Terms/i.test(s)) return 'Please confirm you are 18 or older and agree to the Terms and Privacy Policy.';
@@ -150,6 +187,11 @@
       return;
     }
     const q = new URLSearchParams({ agree: '1', age: '1', fingerprint: fingerprint() });
+    if (turnstileSiteKey) {
+      const tok = captchaToken('ts-auth');
+      if (!tok) { showOauthError(CHECK_MSG); return; }
+      q.set('turnstileToken', tok);
+    }
     window.location.href = '/api/auth/' + provider + '/start?' + q.toString();
   }
 
@@ -596,13 +638,14 @@
         password: $('su-pass').value,
         agreeTerms: $('su-agree').checked,
         ageConfirm: $('su-age').checked,
-        fingerprint: fingerprint()
+        fingerprint: fingerprint(),
+        turnstileToken: captchaToken('ts-auth')
       }});
       ctx();
       if (data.mailNote) toast('Account created', data.mailNote);
       else toast('Account created', 'Check your email to confirm it.');
       await afterSignIn();
-    } catch (err) { $('su-err').textContent = err.message; }
+    } catch (err) { $('su-err').textContent = err.message; resetCaptcha('ts-auth'); }
   });
   $('form-login').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -611,20 +654,22 @@
       await api('/api/auth/login', { method: 'POST', body: {
         email: $('li-email').value,
         password: $('li-pass').value,
-        fingerprint: fingerprint()
+        fingerprint: fingerprint(),
+        turnstileToken: captchaToken('ts-auth')
       }});
       ctx();
       await afterSignIn();
-    } catch (err) { $('li-err').textContent = err.message; }
+    } catch (err) { $('li-err').textContent = err.message; resetCaptcha('ts-auth'); }
   });
   $('form-forgot').addEventListener('submit', async (e) => {
     e.preventDefault();
     $('fo-err').textContent = '';
     $('fo-ok').textContent = '';
     try {
-      const data = await api('/api/auth/forgot', { method: 'POST', body: { email: $('fo-email').value } });
+      const data = await api('/api/auth/forgot', { method: 'POST', body: { email: $('fo-email').value, turnstileToken: captchaToken('ts-forgot') } });
+      resetCaptcha('ts-forgot');
       $('fo-ok').textContent = data.mailNote || data.message || 'If that email has an account, we will send a reset link.';
-    } catch (err) { $('fo-err').textContent = err.message; }
+    } catch (err) { $('fo-err').textContent = err.message; resetCaptcha('ts-forgot'); }
   });
   $('btn-resend').addEventListener('click', async () => {
     try {
@@ -758,6 +803,7 @@
       if ($('demo-badge') && !signedIn) $('demo-badge').hidden = !cfg.demo;
       applyOauthButtons(cfg.oauth);
       applyContactEmail(cfg.contactEmail);
+      setupTurnstile(cfg.turnstileSiteKey);
     } catch (e) { /* ignore */ }
     const path = location.pathname;
     const params = new URLSearchParams(location.search);

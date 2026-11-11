@@ -170,6 +170,7 @@ async function verifyGoogleIdToken(idToken, { audience, nonce, jwks } = {}) {
 
 function publicOauthError(raw) {
   const s = String(raw || '').trim();
+  if (/quick check/i.test(s)) return 'Please finish the quick check.';
   if (/cancelled|access_denied/i.test(s)) return 'Sign-in was cancelled.';
   if (/expired/i.test(s)) return 'That sign-in link expired. Please try again.';
   if (/18 or older|agree to the Terms/i.test(s)) return 'Please confirm you are 18 or older and agree to the Terms and Privacy Policy.';

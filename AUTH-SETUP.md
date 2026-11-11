@@ -145,7 +145,31 @@ After a restart, **Continue with Apple** becomes a live button.
 
 ---
 
-## 3. How accounts are linked
+## 3. Cloudflare Turnstile (free bot check)
+
+Turnstile adds a small “quick check” box on email sign-up, email sign-in, forgot password, and before Google/Apple sign-in. It is off until both keys below are set, so the site keeps working without it.
+
+1. Sign in at [dash.cloudflare.com](https://dash.cloudflare.com/) (a free Cloudflare account is fine; your domain does not have to be on Cloudflare).
+2. In the left menu, open **Turnstile**.
+3. Click **Add widget**.
+4. Widget name: `Goody`.
+5. Hostname: add `goody-dfi5.onrender.com`. (Add `localhost` too only if you want to test your real keys locally.)
+6. Widget mode: **Managed**.
+7. Click **Create**. Copy the **Site Key** and the **Secret Key**.
+8. On Render, add:
+
+```
+TURNSTILE_SITE_KEY=your-site-key
+TURNSTILE_SECRET_KEY=your-secret-key
+```
+
+The site key is public (the browser needs it). Keep the secret key private. After the restart, `/api/health` shows `"turnstile": true`.
+
+For local testing you can use Cloudflare’s test keys, which work on any hostname: site key `1x00000000000000000000AA` with secret `1x0000000000000000000000000000000AA` (always passes). See [Cloudflare’s testing page](https://developers.cloudflare.com/turnstile/troubleshooting/testing/).
+
+---
+
+## 4. How accounts are linked
 
 - If someone already has a Goody account with the same **verified** email, Google or Apple sign-in is attached to that account. They keep their points.
 - A brand-new person who uses Google or Apple still has to tick **I am 18 or older** and **I agree to the Terms and Privacy Policy** before the button will start.
@@ -154,7 +178,7 @@ After a restart, **Continue with Apple** becomes a live button.
 
 ---
 
-## 4. Local testing
+## 5. Local testing
 
 Copy `.env.example` to `.env` and fill in the same kinds of values. Keep:
 

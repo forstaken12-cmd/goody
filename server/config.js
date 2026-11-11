@@ -34,6 +34,8 @@ const config = {
   port: num('PORT', 3000),
   publicBaseUrl: envStr('PUBLIC_BASE_URL') || renderPublicUrl() || 'http://localhost:3000',
   contactEmail: resolveContactEmail(envStr('CONTACT_EMAIL')),
+  turnstileSiteKey: envStr('TURNSTILE_SITE_KEY'),
+  turnstileSecretKey: envStr('TURNSTILE_SECRET_KEY'),
   sharePct: Math.min(0.9, Math.max(0.5, num('USER_SHARE', 0.7))),
   pointUsd: num('POINT_USD', 0.001),
   firstCashoutUsd: num('FIRST_CASHOUT_USD', 0.5),
