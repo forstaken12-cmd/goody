@@ -18,6 +18,7 @@ const payouts = require('./lib/payouts');
 const oauth = require('./lib/oauth');
 const turnstile = require('./lib/turnstile');
 const policy = require('./lib/policy');
+const { canonicalHostMiddleware } = require('./lib/canonicalHost');
 
 const PUBLIC = path.join(__dirname, '..', 'public');
 
@@ -151,6 +152,8 @@ async function createApp(opts) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
+  // 301 other hosts (old onrender.com, www.) to PUBLIC_BASE_URL for page loads.
+  app.use(canonicalHostMiddleware(cfg));
   app.use(express.json({
     verify: (req, _res, buf) => { req.rawBody = buf; }
   }));

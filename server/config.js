@@ -33,6 +33,7 @@ function renderPublicUrl() {
 const config = {
   port: num('PORT', 3000),
   publicBaseUrl: envStr('PUBLIC_BASE_URL') || renderPublicUrl() || 'http://localhost:3000',
+  canonicalRedirect: envStr('CANONICAL_REDIRECT') !== '0',
   contactEmail: resolveContactEmail(envStr('CONTACT_EMAIL')),
   turnstileSiteKey: envStr('TURNSTILE_SITE_KEY'),
   turnstileSecretKey: envStr('TURNSTILE_SECRET_KEY'),

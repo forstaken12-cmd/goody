@@ -2,7 +2,7 @@
 
 This is a plain walkthrough so you can turn on **Continue with Google** and **Continue with Apple** on the live site.
 
-The live site is `https://goody-dfi5.onrender.com`. Redirect URLs must match **exactly** (scheme, host, and path — no trailing slash).
+The live site is `https://goody.day`. Redirect URLs must match **exactly** (scheme, host, and path — no trailing slash). Page visits to `www.goody.day` and the old `goody-dfi5.onrender.com` address are sent to `https://goody.day` with a 301.
 
 Until these keys are set on Render, the buttons still appear but stay disabled and say **Coming soon**. The site will not break.
 
@@ -11,7 +11,7 @@ Do not put real keys in git. Add them in the Render Dashboard: your service → 
 Also set (or confirm):
 
 ```
-PUBLIC_BASE_URL=https://goody-dfi5.onrender.com
+PUBLIC_BASE_URL=https://goody.day
 ```
 
 The app uses this to build the redirect URLs it sends to Google and Apple. If it is wrong, sign-in will fail.
@@ -33,8 +33,8 @@ You need a Google account. A paid Google Cloud billing account is not required j
 2. If you are prompted to register the app, do that. Choose **External** if you want anyone with a Google account to sign in.
 3. App name: `Goody`.
 4. User support email and developer contact email: your email.
-5. App domain (optional for testing): `goody-dfi5.onrender.com`.
-6. Authorized domain: `onrender.com` (Google often wants the root authorized domain).
+5. App domain (optional for testing): `goody.day`.
+6. Authorized domain: `goody.day`.
 7. Scopes: keep the default user info scopes (`openid`, `email`, `profile`). You do not need other Google APIs for sign-in.
 8. Save. While the app is in **Testing**, only people you add as test users can sign in. Publish the app (or add testers) when you are ready for everyone.
 
@@ -47,10 +47,10 @@ Official guide: [Using OAuth 2.0 for Web Server Applications](https://developers
 3. Application type: **Web application**.
 4. Name: `Goody web`.
 5. Authorized JavaScript origins (optional for this server flow, but harmless):
-   - `https://goody-dfi5.onrender.com`
+   - `https://goody.day`
    - `http://localhost:3000` (local testing)
 6. Authorized redirect URIs — add **both**:
-   - `https://goody-dfi5.onrender.com/api/auth/google/callback`
+   - `https://goody.day/api/auth/google/callback`
    - `http://localhost:3000/api/auth/google/callback`
 7. Click **Create**.
 8. Copy the **Client ID** and **Client secret**.
@@ -60,7 +60,7 @@ Official guide: [Using OAuth 2.0 for Web Server Applications](https://developers
 ```
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
-PUBLIC_BASE_URL=https://goody-dfi5.onrender.com
+PUBLIC_BASE_URL=https://goody.day
 ```
 
 After a restart, **Continue with Google** becomes a live button. The “Coming soon” label on that button goes away.
@@ -100,15 +100,15 @@ Official help: [Configure Sign in with Apple for the web](https://developer.appl
 3. Enable **Sign In with Apple** and click **Configure**.
 4. Primary App ID: the App ID from step B.
 5. Domains and Subdomains:
-   - `goody-dfi5.onrender.com`
+   - `goody.day`
 6. Return URLs — this must match **exactly**:
-   - `https://goody-dfi5.onrender.com/api/auth/apple/callback`
+   - `https://goody.day/api/auth/apple/callback`
 7. If you also test locally, add `http://localhost:3000/api/auth/apple/callback` only if Apple will accept a localhost return URL on your account. Live sign-in uses the `https` URL above.
 8. Save, then **Continue** and **Register**.
 
 Apple may ask you to **verify the domain**. If they give you a verification file, you can either:
 
-- paste the file contents into a Render env var named `APPLE_DOMAIN_ASSOCIATION` (the app will serve it at `https://goody-dfi5.onrender.com/.well-known/apple-developer-domain-association.txt`), or
+- paste the file contents into a Render env var named `APPLE_DOMAIN_ASSOCIATION` (the app will serve it at `https://goody.day/.well-known/apple-developer-domain-association.txt`), or
 - put the file in `public/.well-known/apple-developer-domain-association.txt` and deploy (do not commit if you would rather keep it out of git).
 
 Then click **Verify** in Apple’s form.
@@ -136,7 +136,7 @@ APPLE_CLIENT_ID=com.yourname.goody.web
 APPLE_TEAM_ID=AB12CD34EF
 APPLE_KEY_ID=XY98ZW76VU
 APPLE_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\n....\n-----END PRIVATE KEY-----
-PUBLIC_BASE_URL=https://goody-dfi5.onrender.com
+PUBLIC_BASE_URL=https://goody.day
 ```
 
 Render env vars are one line, so put the private key on a single line and write `\n` where each line break belongs. The app turns those `\n` sequences back into real line breaks. You can also paste a multi-line value if the dashboard lets you.
@@ -147,13 +147,13 @@ After a restart, **Continue with Apple** becomes a live button.
 
 ## 3. Cloudflare Turnstile (free bot check)
 
-Turnstile adds a small “quick check” box on email sign-up, email sign-in, forgot password, and before Google/Apple sign-in. It is off until both keys below are set, so the site keeps working without it.
+Turnstile adds a small “quick check” box on email sign-up, email sign-in, forgot password, and before Apple sign-in. (Google sign-in skips it.) It is off until both keys below are set, so the site keeps working without it.
 
 1. Sign in at [dash.cloudflare.com](https://dash.cloudflare.com/) (a free Cloudflare account is fine; your domain does not have to be on Cloudflare).
 2. In the left menu, open **Turnstile**.
 3. Click **Add widget**.
 4. Widget name: `Goody`.
-5. Hostname: add `goody-dfi5.onrender.com`. (Add `localhost` too only if you want to test your real keys locally.)
+5. Hostname: add `goody.day`. (Add `localhost` too only if you want to test your real keys locally.)
 6. Widget mode: **Managed**.
 7. Click **Create**. Copy the **Site Key** and the **Secret Key**.
 8. On Render, add:
@@ -194,7 +194,7 @@ and add the localhost redirect URLs in Google (and Apple, if allowed). Then `npm
 
 | Provider | Redirect URL |
 | --- | --- |
-| Google, live | `https://goody-dfi5.onrender.com/api/auth/google/callback` |
+| Google, live | `https://goody.day/api/auth/google/callback` |
 | Google, local | `http://localhost:3000/api/auth/google/callback` |
-| Apple, live | `https://goody-dfi5.onrender.com/api/auth/apple/callback` |
+| Apple, live | `https://goody.day/api/auth/apple/callback` |
 | Apple, local (if you add it) | `http://localhost:3000/api/auth/apple/callback` |

@@ -4,7 +4,7 @@ A rewards app: people finish little tasks (install an app, play for a while, or 
 
 This is the real project (a Node server + a phone-sized web app). The built-in **demo partner** lets you try the whole path without real partner accounts. No real money is sent until you connect payout providers and approve requests.
 
-The live site is [https://goody-dfi5.onrender.com](https://goody-dfi5.onrender.com). It auto-deploys from the `main` branch of this repo.
+The live site is [https://goody.day](https://goody.day). The old `goody-dfi5.onrender.com` address and `www.goody.day` redirect there for page visits (postbacks, `/api/health`, and POSTs are not redirected; set `CANONICAL_REDIRECT=0` to turn this off). It auto-deploys from the `main` branch of this repo.
 
 Setup for Google and Apple sign-in is in [AUTH-SETUP.md](AUTH-SETUP.md).
 
@@ -58,7 +58,7 @@ A free Render Postgres instance named `goody-db` was set up for this app. **Rend
 
 Generic demo signature (HMAC-SHA256 of `uid|txid|payout|status`) is used by the built-in simulator.
 
-See **PARTNERS.md** for who to apply to, what they usually ask for, and the exact live postback URLs on goody-dfi5.onrender.com.
+See **PARTNERS.md** for who to apply to, what they usually ask for, and the exact live postback URLs on goody.day.
 
 ## What’s real today vs still TODO before launch
 
@@ -78,7 +78,7 @@ See **PARTNERS.md** for who to apply to, what they usually ask for, and the exac
 **Still needed before a real launch:**
 
 - A valid `DATABASE_URL` pointing at Postgres, and a plan for when free Render Postgres expires on 2026-12-11
-- `PUBLIC_BASE_URL=https://goody-dfi5.onrender.com` if it is not already picked up from Render
+- `PUBLIC_BASE_URL=https://goody.day` if it is not already picked up from Render
 - An email provider (`MAIL_FROM` plus `BREVO_API_KEY`, which is preferred on Render because the free plan blocks outbound SMTP; or `SMTP_URL` / `SENDGRID_API_KEY`) so confirmation and reset links are actually sent
 - Real partner accounts and secrets (see PARTNERS.md). Confirm leftover official details for ayeT-Studios and TheoremReach.
 - Real payout provider keys (PayPal, Tremendous, and/or ZBD). For Lightning, also set `BTC_USD` so the amount can be converted. Admin “mark sent” or “Approved, send manually” does not move money by itself.
@@ -93,7 +93,7 @@ See **PARTNERS.md** for who to apply to, what they usually ask for, and the exac
 Never put real secrets in git. Set these in the Render dashboard (or your `.env` locally):
 
 - `DATABASE_URL` — a real `postgres://` or `postgresql://` connection string (if this is a placeholder, the app falls back to sql.js)
-- `PUBLIC_BASE_URL` — `https://goody-dfi5.onrender.com` (recommended; required for Google/Apple redirect URLs)
+- `PUBLIC_BASE_URL` — `https://goody.day` (recommended; required for Google/Apple redirect URLs)
 - Captcha: `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` (Cloudflare Turnstile; off until both are set; see AUTH-SETUP.md)
 - `CONTACT_EMAIL` — shown on Terms, Privacy, and in the app (defaults to `forstaken12@gmail.com`)
 
