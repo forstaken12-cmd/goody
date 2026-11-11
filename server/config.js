@@ -1,5 +1,16 @@
 'use strict';
 
+const DEFAULT_CONTACT_EMAIL = 'forstaken12@gmail.com';
+
+function isContactEmail(value) {
+  return /^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/i.test(String(value || '').trim());
+}
+
+function resolveContactEmail(raw) {
+  const e = String(raw == null ? '' : raw).trim();
+  return isContactEmail(e) ? e : DEFAULT_CONTACT_EMAIL;
+}
+
 function envStr(name) {
   const v = process.env[name];
   return v == null ? '' : String(v).trim();
@@ -22,6 +33,7 @@ function renderPublicUrl() {
 const config = {
   port: num('PORT', 3000),
   publicBaseUrl: envStr('PUBLIC_BASE_URL') || renderPublicUrl() || 'http://localhost:3000',
+  contactEmail: resolveContactEmail(envStr('CONTACT_EMAIL')),
   sharePct: Math.min(0.9, Math.max(0.5, num('USER_SHARE', 0.7))),
   pointUsd: num('POINT_USD', 0.001),
   firstCashoutUsd: num('FIRST_CASHOUT_USD', 0.5),
@@ -132,4 +144,7 @@ config.partners = {
   }
 };
 
+config.DEFAULT_CONTACT_EMAIL = DEFAULT_CONTACT_EMAIL;
+config.resolveContactEmail = resolveContactEmail;
 module.exports = config;
+

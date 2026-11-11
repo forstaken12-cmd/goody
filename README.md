@@ -83,7 +83,7 @@ See **PARTNERS.md** for who to apply to, what they usually ask for, and the exac
 - Real partner accounts and secrets (see PARTNERS.md). Confirm leftover official details for ayeT-Studios and TheoremReach.
 - Real payout provider keys (PayPal, Tremendous, and/or ZBD). For Lightning, also set `BTC_USD` so the amount can be converted. Admin “mark sent” or “Approved, send manually” does not move money by itself.
 - Stronger anti-abuse (captcha, phone checks, VPN tools). TheoremReach in particular asks for a captcha or similar on signup.
-- A lawyer review of the Terms and Privacy Policy, a real contact email in the Privacy Policy, and tax / identity handling for payouts
+- A lawyer review of the Terms and Privacy Policy, and tax / identity handling for payouts
 - App store wrapping if you want iOS/Android listings
 - Hosting upgrades (Render’s free web service can spin down when idle), backups, and monitoring
 - Change default secrets before exposing any new environment
@@ -94,6 +94,7 @@ Never put real secrets in git. Set these in the Render dashboard (or your `.env`
 
 - `DATABASE_URL` — a real `postgres://` or `postgresql://` connection string (if this is a placeholder, the app falls back to sql.js)
 - `PUBLIC_BASE_URL` — `https://goody-dfi5.onrender.com` (recommended; required for Google/Apple redirect URLs)
+- `CONTACT_EMAIL` — shown on Terms, Privacy, and in the app (defaults to `forstaken12@gmail.com`)
 - Google sign-in: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (see AUTH-SETUP.md)
 - Apple sign-in: `APPLE_CLIENT_ID` (Services ID), `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`. Sign in with Apple needs a paid Apple Developer Program membership ($99 USD/year; confirm on Apple’s site). Optional domain-verify file: `APPLE_DOMAIN_ASSOCIATION`
 - `MAIL_FROM` and `BREVO_API_KEY` (preferred on Render; HTTP API). SMTP (`SMTP_URL` or `SMTP_HOST`+`SMTP_USER`+`SMTP_PASS`) and `SENDGRID_API_KEY` also work where outbound SMTP is allowed. If more than one is set, Brevo is used first.

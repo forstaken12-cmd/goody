@@ -1044,6 +1044,18 @@ html.legal-page, body.legal-page {
 .legal ul { padding-left: 1.2em; margin: 0 0 8px; }
 .legal-kicker { margin: 0 0 10px; }
 .legal-kicker a { color: var(--teal, #0A8F86); font-weight: 650; text-decoration: none; }
+.legal-contact {
+  margin-top: 28px;
+  padding-top: 8px;
+}
+.legal-contact a {
+  color: var(--teal, #0A8F86);
+  font-weight: 650;
+  word-break: break-all;
+}
+.legal a { color: var(--teal, #0A8F86); font-weight: 650; }
+.acct-contact { text-align: center; margin-top: 12px; }
+.acct-contact a { color: var(--teal, #0A8F86); font-weight: 650; }
 .legal-banner {
   background: #FFF3C4;
   color: #5A4700;

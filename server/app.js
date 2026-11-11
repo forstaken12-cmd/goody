@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const config = require('./config');
@@ -17,6 +18,27 @@ const payouts = require('./lib/payouts');
 const oauth = require('./lib/oauth');
 
 const PUBLIC = path.join(__dirname, '..', 'public');
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+function contactAddress(cfg) {
+  return config.resolveContactEmail(cfg && cfg.contactEmail);
+}
+
+function injectContact(html, email) {
+  const safe = escapeHtml(email);
+  return String(html).split('{{CONTACT_EMAIL}}').join(safe);
+}
+
+function sendLegalPage(res, filename, cfg) {
+  const html = fs.readFileSync(path.join(PUBLIC, filename), 'utf8');
+  res.type('html').send(injectContact(html, contactAddress(cfg)));
+}
+
 
 function offerView(o, sharePct, pointUsd) {
   const parts = creditFromPartner(o.partnerUsd, sharePct, pointUsd);
@@ -173,6 +195,7 @@ async function createApp(opts) {
       tz: cfg.tz,
       mailEnabled: mailer.enabled,
       minAge: 18,
+      contactEmail: contactAddress(cfg),
       oauth: oauth.providersStatus(cfg)
     });
   });
@@ -769,8 +792,7 @@ async function createApp(opts) {
     res.json({ ok: true, cashout: await db.get('SELECT * FROM cashouts WHERE id = ?', [row.id]) });
   });
 
-  app.use(express.static(PUBLIC));
-    app.get('/.well-known/apple-developer-domain-association.txt', (_req, res) => {
+  app.get('/.well-known/apple-developer-domain-association.txt', (_req, res) => {
     const body = cfg.appleDomainAssociation;
     if (!body) {
       res.status(404).type('text/plain').send('Not found');
@@ -779,9 +801,10 @@ async function createApp(opts) {
     res.type('text/plain').send(body);
   });
 
-app.get('/terms', (_req, res) => res.sendFile(path.join(PUBLIC, 'terms.html')));
-  app.get('/privacy', (_req, res) => res.sendFile(path.join(PUBLIC, 'privacy.html')));
+  app.get(['/terms', '/terms.html'], (_req, res) => sendLegalPage(res, 'terms.html', cfg));
+  app.get(['/privacy', '/privacy.html'], (_req, res) => sendLegalPage(res, 'privacy.html', cfg));
   app.get('/admin', (_req, res) => res.sendFile(path.join(PUBLIC, 'admin.html')));
+  app.use(express.static(PUBLIC));
   app.use((req, res, next) => {
     if (req.method !== 'GET') return next();
     if (req.path.startsWith('/api') || req.path.startsWith('/postback') || req.path.startsWith('/admin')) return next();
@@ -802,4 +825,4 @@ app.get('/terms', (_req, res) => res.sendFile(path.join(PUBLIC, 'terms.html')));
   return app;
 }
 
-module.exports = { createApp, offerView, methodMinUsd };
+module.exports = { createApp, offerView, methodMinUsd, contactAddress, injectContact, escapeHtml };

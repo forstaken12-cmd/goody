@@ -102,6 +102,16 @@
       : (which === 'forgot' ? 'We’ll email a link if that account exists.' : 'Do little tasks. Get points. Cash out when you’re ready.');
   }
 
+  let contactEmail = 'forstaken12@gmail.com';
+  function applyContactEmail(email) {
+    const addr = String(email || '').trim() || 'forstaken12@gmail.com';
+    contactEmail = addr;
+    document.querySelectorAll('[data-contact-email]').forEach((el) => {
+      el.textContent = addr;
+      if (el.tagName === 'A') el.setAttribute('href', 'mailto:' + addr);
+    });
+  }
+
   function applyOauthButtons(oauth) {
     oauth = oauth || {};
     [['btn-google', 'oauth-google-item', !!oauth.google],
@@ -524,7 +534,8 @@
       '<br>Points in: ' + fmt(b.paidIn) +
       '<br>Cashed out: ' + fmt(b.paidOut) +
       '<br>Checking now: ' + fmt(b.pending) +
-      '<br>Your points now: ' + fmt(b.available) + '</div>';
+      '<br>Your points now: ' + fmt(b.available) + '</div>' +
+      '<p class="acct-contact">Contact us: <a data-contact-email href="mailto:' + escapeHtml(contactEmail) + '">' + escapeHtml(contactEmail) + '</a></p>';
   }
 
   /* events */
@@ -746,6 +757,7 @@
       if ($('welcome-demo')) $('welcome-demo').hidden = !cfg.demo;
       if ($('demo-badge') && !signedIn) $('demo-badge').hidden = !cfg.demo;
       applyOauthButtons(cfg.oauth);
+      applyContactEmail(cfg.contactEmail);
     } catch (e) { /* ignore */ }
     const path = location.pathname;
     const params = new URLSearchParams(location.search);
