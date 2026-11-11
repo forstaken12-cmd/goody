@@ -1,5 +1,10 @@
 'use strict';
 
+function envStr(name) {
+  const v = process.env[name];
+  return v == null ? '' : String(v).trim();
+}
+
 function num(name, fallback) {
   const v = process.env[name];
   if (v == null || v === '') return fallback;
@@ -16,7 +21,7 @@ function renderPublicUrl() {
 
 const config = {
   port: num('PORT', 3000),
-  publicBaseUrl: process.env.PUBLIC_BASE_URL || renderPublicUrl() || 'http://localhost:3000',
+  publicBaseUrl: envStr('PUBLIC_BASE_URL') || renderPublicUrl() || 'http://localhost:3000',
   sharePct: Math.min(0.9, Math.max(0.5, num('USER_SHARE', 0.7))),
   pointUsd: num('POINT_USD', 0.001),
   firstCashoutUsd: num('FIRST_CASHOUT_USD', 0.5),
@@ -50,13 +55,13 @@ const config = {
   tremendousEnv: process.env.TREMENDOUS_ENV || 'testflight',
   zbdApiKey: process.env.ZBD_API_KEY || process.env.ZEBEDEE_API_KEY || '',
   btcUsd: num('BTC_USD', 0),
-  googleClientId: process.env.GOOGLE_CLIENT_ID || '',
-  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-  appleClientId: process.env.APPLE_CLIENT_ID || '',
-  appleTeamId: process.env.APPLE_TEAM_ID || '',
-  appleKeyId: process.env.APPLE_KEY_ID || '',
-  applePrivateKey: process.env.APPLE_PRIVATE_KEY || '',
-  appleDomainAssociation: process.env.APPLE_DOMAIN_ASSOCIATION || ''
+  googleClientId: envStr('GOOGLE_CLIENT_ID'),
+  googleClientSecret: envStr('GOOGLE_CLIENT_SECRET'),
+  appleClientId: envStr('APPLE_CLIENT_ID'),
+  appleTeamId: envStr('APPLE_TEAM_ID'),
+  appleKeyId: envStr('APPLE_KEY_ID'),
+  applePrivateKey: envStr('APPLE_PRIVATE_KEY'),
+  appleDomainAssociation: envStr('APPLE_DOMAIN_ASSOCIATION')
 };
 
 

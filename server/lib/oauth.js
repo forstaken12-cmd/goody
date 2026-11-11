@@ -154,14 +154,58 @@ async function verifyGoogleIdToken(idToken, { audience, nonce, jwks } = {}) {
     try {
       const { payload } = await jwtVerify(idToken, key, { issuer, audience });
       if (nonce && payload.nonce !== nonce) {
-        throw Object.assign(new Error('Sign-in could not be checked. Please try again.'), { http: 401 });
+        const err = new Error('Sign-in could not be checked. Please try again.');
+        err.http = 401;
+        err.detail = 'nonce_mismatch';
+        throw err;
       }
       return payload;
     } catch (e) {
+      if (e && e.detail === 'nonce_mismatch') throw e;
       lastErr = e;
     }
   }
   throw Object.assign(new Error('Google sign-in could not be checked.'), { http: 401, cause: lastErr });
+}
+
+function publicOauthError(raw) {
+  const s = String(raw || '').trim();
+  if (/cancelled|access_denied/i.test(s)) return 'Sign-in was cancelled.';
+  if (/expired/i.test(s)) return 'That sign-in link expired. Please try again.';
+  if (/18 or older|agree to the Terms/i.test(s)) return 'Please confirm you are 18 or older and agree to the Terms and Privacy Policy.';
+  if (/already has an account/i.test(s)) return 'That email already has an account. Try signing in with your password.';
+  if (/already used/i.test(s)) return 'That email is already used on another account.';
+  return 'Sign-in could not be finished. Please try again.';
+}
+
+function errorCauseMessage(e, depth) {
+  if (!e || depth > 3) return '';
+  const c = e.cause;
+  if (!c) return '';
+  if (typeof c === 'string') return c;
+  if (c.message) return String(c.message).slice(0, 300);
+  return '';
+}
+
+/**
+ * Log an OAuth failure with the real cause, but never tokens, codes,
+ * cookies, client secrets, or private keys.
+ */
+function logOauthFailure(stage, err, extra) {
+  extra = extra || {};
+  const e = err || {};
+  const parts = [
+    'OAuth failure',
+    'stage=' + stage,
+    extra.provider ? 'provider=' + extra.provider : '',
+    e.message ? 'message=' + String(e.message).slice(0, 300) : '',
+    e.detail ? 'detail=' + String(e.detail).slice(0, 200) : '',
+    e.code ? 'code=' + String(e.code).slice(0, 80) : '',
+    e.constraint ? 'constraint=' + String(e.constraint).slice(0, 80) : '',
+    errorCauseMessage(e, 0) ? 'cause=' + errorCauseMessage(e, 0) : '',
+    extra.hint ? 'hint=' + extra.hint : ''
+  ].filter(Boolean);
+  console.error(parts.join(' | '));
 }
 
 async function verifyAppleIdToken(idToken, { audience, nonce, jwks } = {}) {
@@ -215,5 +259,6 @@ module.exports = {
   exchangeGoogleCode, exchangeAppleCode,
   verifyGoogleIdToken, verifyAppleIdToken,
   createOauthState, takeOauthState, claimsFromPayload,
-  emailVerifiedClaim
+  emailVerifiedClaim,
+  publicOauthError, logOauthFailure
 };

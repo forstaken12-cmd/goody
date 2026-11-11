@@ -484,5 +484,6 @@ module.exports = {
   isPostgresUrl,
   convertPlaceholders,
   schemaSql,
-  migrate
+  migrate,
+  wrapPostgres
 };

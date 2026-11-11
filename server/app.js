@@ -181,10 +181,15 @@ async function createApp(opts) {
     return v === true || v === 1 || v === '1' || v === 'true' || v === 'on' || v === 'yes';
   }
 
-  function oauthFail(res, message) {
-    const q = new URLSearchParams({
-      authError: message || 'Sign-in could not be finished. Please try again.'
-    });
+  function oauthFail(res, message, err, meta) {
+    const publicMsg = oauth.publicOauthError(message || (err && err.message) || '');
+    if (err || (meta && meta.stage)) {
+      oauth.logOauthFailure((meta && meta.stage) || 'oauth', err || new Error(message || publicMsg), {
+        provider: meta && meta.provider,
+        hint: meta && meta.hint
+      });
+    }
+    const q = new URLSearchParams({ authError: publicMsg });
     res.redirect(302, '/?' + q.toString());
   }
 
@@ -213,24 +218,26 @@ async function createApp(opts) {
         : oauth.buildAppleAuthUrl(cfg, { state, nonce });
       res.redirect(302, url);
     } catch (e) {
+      oauth.logOauthFailure('start', e, { provider, hint: 'could_not_start' });
       sendError(res, e);
     }
   }
 
   async function finishOauth(req, res, provider, params) {
     const src = params || {};
+    const meta = (stage, hint) => ({ provider, stage, hint });
     if (src.error) {
-      oauthFail(res, 'Sign-in was cancelled.');
+      oauthFail(res, 'Sign-in was cancelled.', null, meta('provider_error', String(src.error).slice(0, 80)));
       return;
     }
     try {
       const row = await oauth.takeOauthState(db, src.state, provider);
       if (!row) {
-        oauthFail(res, 'That sign-in link expired. Please try again.');
+        oauthFail(res, 'That sign-in link expired. Please try again.', null, meta('state', 'missing_or_expired_state'));
         return;
       }
       if (!src.code && !src.id_token) {
-        oauthFail(res, 'Sign-in could not be finished. Please try again.');
+        oauthFail(res, 'Sign-in could not be finished. Please try again.', null, meta('callback', 'missing_code_and_id_token'));
         return;
       }
       let payload;
@@ -251,7 +258,7 @@ async function createApp(opts) {
           token = tokens.id_token || token;
         }
         if (!token) {
-          oauthFail(res, 'Sign-in could not be finished. Please try again.');
+          oauthFail(res, 'Sign-in could not be finished. Please try again.', null, meta('apple_token', 'missing_id_token'));
           return;
         }
         payload = await oauth.verifyAppleIdToken(token, {
@@ -268,9 +275,10 @@ async function createApp(opts) {
         fingerprint: row.fingerprint
       }, req);
       auth.setSessionCookie(res, session, cfg);
+      console.log('OAuth sign-in ok | provider=' + provider);
       res.redirect(302, '/');
     } catch (e) {
-      oauthFail(res, e.message || 'Sign-in could not be finished. Please try again.');
+      oauthFail(res, e.message, e, meta('finish'));
     }
   }
 

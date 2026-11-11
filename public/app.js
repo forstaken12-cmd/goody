@@ -115,11 +115,28 @@
     });
   }
 
+  function friendlyAuthError(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    if (/cancelled/i.test(s)) return 'Sign-in was cancelled.';
+    if (/expired/i.test(s)) return 'That sign-in link expired. Please try again.';
+    if (/18 or older|agree to the Terms/i.test(s)) return 'Please confirm you are 18 or older and agree to the Terms and Privacy Policy.';
+    if (/already has an account/i.test(s)) return 'That email already has an account. Try signing in with your password.';
+    if (/already used/i.test(s)) return 'That email is already used on another account.';
+    return 'Sign-in could not be finished. Please try again.';
+  }
+
+  function showOauthError(raw) {
+    const el = $('oauth-err');
+    if (!el) return;
+    el.textContent = friendlyAuthError(raw);
+  }
+
   function startOauth(provider) {
     const err = $('oauth-err');
     if (err) err.textContent = '';
     if (!$('su-age') || !$('su-age').checked || !$('su-agree') || !$('su-agree').checked) {
-      if (err) err.textContent = 'Please confirm you are 18 or older and agree to the Terms and Privacy Policy.';
+      showOauthError('Please confirm you are 18 or older and agree to the Terms and Privacy Policy.');
       return;
     }
     const q = new URLSearchParams({ agree: '1', age: '1', fingerprint: fingerprint() });
@@ -717,6 +734,12 @@
     showAuth, afterSignIn
   };
 
+  const bootParams = new URLSearchParams(location.search);
+  if (bootParams.get('authError')) {
+    showOauthError(bootParams.get('authError'));
+    if (history.replaceState) history.replaceState({}, '', location.pathname || '/');
+  }
+
   async function boot() {
     try {
       const cfg = await fetch('/api/config', { credentials: 'same-origin' }).then((r) => r.json());
@@ -726,10 +749,6 @@
     } catch (e) { /* ignore */ }
     const path = location.pathname;
     const params = new URLSearchParams(location.search);
-    if (params.get('authError') && $('oauth-err')) {
-      $('oauth-err').textContent = params.get('authError');
-      if (history.replaceState) history.replaceState({}, '', path || '/');
-    }
     if (path === '/reset' && params.get('token')) {
       $('reset-overlay').classList.add('show');
     }
@@ -749,9 +768,9 @@
         showAuth(path === '/reset' ? 'login' : 'signup');
         return;
       }
-      await refresh();
-      await loadOffers();
-      requestAnimationFrame(moveTabInk);
+      // The sign-in overlay starts visible in the HTML. After Google/Apple
+      // (a full page load with a session cookie), we must hide it here.
+      await afterSignIn();
     } catch (e) {
       showAuth(path === '/reset' ? 'login' : 'signup');
     }

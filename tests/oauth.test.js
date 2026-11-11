@@ -2,6 +2,8 @@
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { generateKeyPair, exportJWK, exportPKCS8, SignJWT, jwtVerify, createLocalJWKSet } = require('jose');
 const { createApp } = require('../server/app');
 const oauth = require('../server/lib/oauth');
@@ -356,4 +358,32 @@ test('email+password account with verified email can be linked to Google', async
   assert.equal(linked.user.public_id, created.user.public_id);
   assert.equal(linked.user.google_id, 'google-sam');
   assert.ok(linked.user.email_verified_at);
+});
+
+
+test('boot hides the sign-in overlay after a full-page OAuth return, and shows authError', () => {
+  const js = fs.readFileSync(path.join(__dirname, '../public/app.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+  assert.match(html, /id="auth-overlay"/);
+  assert.match(html, /class="overlay show"/);
+  const boot = js.slice(js.indexOf('async function boot()'), js.indexOf('boot().catch'));
+  assert.match(boot, /afterSignIn\(/, 'signed-in boot must hide the overlay via afterSignIn');
+  assert.match(js, /bootParams\.get\('authError'\)/);
+  assert.match(js, /history\.replaceState/);
+  assert.match(js, /function showOauthError/);
+  assert.match(js, /function friendlyAuthError/);
+});
+
+test('public OAuth errors stay short and never echo raw token or database text', () => {
+  const oauth = require('../server/lib/oauth');
+  assert.equal(oauth.publicOauthError('Sign-in was cancelled.'), 'Sign-in was cancelled.');
+  assert.equal(oauth.publicOauthError('That sign-in link expired. Please try again.'), 'That sign-in link expired. Please try again.');
+  assert.equal(
+    oauth.publicOauthError('duplicate key value violates unique constraint "users_email_key"'),
+    'Sign-in could not be finished. Please try again.'
+  );
+  assert.equal(
+    oauth.publicOauthError('unexpected "aud" claim value'),
+    'Sign-in could not be finished. Please try again.'
+  );
 });
