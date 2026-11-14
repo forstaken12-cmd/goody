@@ -15,6 +15,7 @@ const { createSimulator } = require('./demo/simulator');
 const goals = require('./lib/goals');
 const { createMailer, healthMail } = require('./lib/mail');
 const payouts = require('./lib/payouts');
+const secretBox = require('./lib/secretBox');
 const oauth = require('./lib/oauth');
 const turnstile = require('./lib/turnstile');
 const policy = require('./lib/policy');
@@ -148,6 +149,30 @@ async function createApp(opts) {
   }
 
   const sim = createSimulator({ config: cfg, ingest, db });
+  const reloadly = payouts.createReloadly(cfg, { fetchFn: opts.reloadlyFetch, timeoutMs: opts.reloadlyTimeoutMs });
+
+  function giftKey() {
+    return cfg.giftCodeKey || cfg.reloadlyClientSecret || process.env.RELOADLY_CLIENT_SECRET || '';
+  }
+  // What a user (or the admin list) may see about a cash out. Never the code.
+  function cashoutView(row) {
+    if (!row) return row;
+    const out = Object.assign({}, row);
+    delete out.gift_code_enc;
+    out.has_code = !!row.gift_code_enc;
+    return out;
+  }
+  async function refundCashout(row, note) {
+    await db.run('UPDATE cashouts SET status = ?, admin_note = ?, updated_at = ? WHERE id = ?', ['failed', note, isoNow(), row.id]);
+    if (row.ledger_id) await ledger.settleDebit(db, row.ledger_id, 'rejected');
+  }
+  async function saveCards(rowId, cards) {
+    if (!cards || !cards.length) return false;
+    const key = giftKey();
+    if (!key) return false;
+    await db.run('UPDATE cashouts SET gift_code_enc = ?, updated_at = ? WHERE id = ?', [secretBox.seal(JSON.stringify(cards), key), isoNow(), rowId]);
+    return true;
+  }
 
   const app = express();
   app.disable('x-powered-by');
@@ -627,12 +652,54 @@ async function createApp(opts) {
     }
   });
 
+  // A picked Reloadly card: the price is the card's value, no email needed.
+  async function giftCashout(req, res) {
+    if (!payouts.reloadlyEnabled(cfg)) return res.status(400).json({ error: 'Gift cards are not ready yet.' });
+    let brands, product;
+    try {
+      brands = await reloadly.brands();
+      product = await reloadly.findProduct(req.body.productId);
+    } catch (e) {
+      console.warn('Reloadly catalog failed | kind=' + (e.kind || 'unknown') + ' | ' + e.message);
+      return res.status(503).json({ error: 'Gift cards are taking a short nap. Try again later.' });
+    }
+    const brand = brands.find((b) => b.productId === Number(req.body.productId));
+    if (!brand || !product) return res.status(400).json({ error: 'Pick a card from the list.' });
+    const value = Number(req.body.value);
+    if (!payouts.validGiftValue(product, value) || !brand.values.includes(value)) {
+      return res.status(400).json({ error: 'Pick one of the amounts shown for ' + brand.name + '.' });
+    }
+    const pts = usdToPts(value, cfg.pointUsd);
+    const bal = await ledger.balanceOf(db, req.user.id);
+    if (pts > bal.available) {
+      return res.status(400).json({ error: 'You need ' + pts + ' points for this card.' });
+    }
+    const usd = ptsToUsd(pts, cfg.pointUsd);
+    const label = brand.name + ' $' + (Number.isInteger(value) ? value : value.toFixed(2));
+    const isFirst = !req.user.first_cashout_at;
+    const debit = await ledger.holdDebit(db, { userId: req.user.id, source: 'cashout', points: pts, usd, note: 'gift · ' + label });
+    const now = isoNow();
+    const r = await db.run(
+      `INSERT INTO cashouts (user_id, method, destination, points, usd, is_first, status, ledger_id, gift_product_id, gift_brand, gift_value, gift_logo, created_at, updated_at)
+       VALUES (?, 'gift', ?, ?, ?, ?, 'requested', ?, ?, ?, ?, ?, ?, ?)`,
+      [req.user.id, label, pts, usd, isFirst ? 1 : 0, debit.id, brand.productId, brand.name, value, brand.logo || null, now, now]
+    );
+    if (isFirst) {
+      await db.run('UPDATE users SET first_cashout_at = ? WHERE id = ? AND first_cashout_at IS NULL', [now, req.user.id]);
+    }
+    const row = await db.get('SELECT * FROM cashouts WHERE id = ?', [r.lastInsertRowid]);
+    res.json({ ok: true, cashout: cashoutView(row), balance: await ledger.balanceOf(db, req.user.id) });
+  }
+
   app.post('/api/cashout', requireUser, requireTerms, cashLimit, async (req, res) => {
     try {
       if (!req.user.email_verified_at) {
         return res.status(403).json({ error: 'Please confirm your email before you cash out.' });
       }
       const method = (req.body && req.body.method) || 'lightning';
+      if (method === 'gift' && req.body && req.body.productId != null) {
+        return await giftCashout(req, res);
+      }
       const dest = ((req.body && req.body.destination) || '').trim();
       if (!['lightning', 'paypal', 'gift'].includes(method)) {
         return res.status(400).json({ error: 'Pick Bitcoin, PayPal, or a gift card.' });
@@ -674,7 +741,7 @@ async function createApp(opts) {
         await db.run('UPDATE users SET first_cashout_at = ? WHERE id = ? AND first_cashout_at IS NULL', [now, req.user.id]);
       }
       const row = await db.get('SELECT * FROM cashouts WHERE id = ?', [r.lastInsertRowid]);
-      res.json({ ok: true, cashout: row, balance: await ledger.balanceOf(db, req.user.id) });
+      res.json({ ok: true, cashout: cashoutView(row), balance: await ledger.balanceOf(db, req.user.id) });
     } catch (e) {
       sendError(res, e);
     }
@@ -682,7 +749,50 @@ async function createApp(opts) {
 
   app.get('/api/cashouts', requireUser, async (req, res) => {
     const rows = await db.all('SELECT * FROM cashouts WHERE user_id = ? ORDER BY created_at DESC LIMIT 50', [req.user.id]);
-    res.json({ cashouts: rows });
+    res.json({ cashouts: rows.map(cashoutView) });
+  });
+
+  // Gift cards a user can pick. Off (enabled:false) until Reloadly works.
+  app.get('/api/giftcards', requireUser, async (_req, res) => {
+    if (!payouts.reloadlyEnabled(cfg)) return res.json({ enabled: false });
+    try {
+      const brands = await reloadly.brands();
+      res.json({ enabled: brands.length > 0, env: reloadly.env, brands });
+    } catch (e) {
+      console.warn('Reloadly catalog failed | kind=' + (e.kind || 'unknown') + ' | ' + e.message);
+      res.json({ enabled: false, note: 'Gift cards are taking a short nap. Try again later.' });
+    }
+  });
+
+  // Show a gift card code to its owner. Fetches it from Reloadly if it was not ready before.
+  app.get('/api/cashouts/:id/code', requireUser, async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      const row = await db.get('SELECT * FROM cashouts WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
+      if (!row || !row.gift_product_id) return res.status(404).json({ error: 'Not found' });
+      if (row.status !== 'sent') return res.status(400).json({ error: 'This gift card is not ready yet.' });
+      if (!row.gift_code_enc && row.gift_txn_id && payouts.reloadlyEnabled(cfg)) {
+        try {
+          const cards = await reloadly.redeemCode(row.gift_txn_id);
+          await saveCards(row.id, cards);
+        } catch (e) {
+          const tx = await reloadly.transaction(row.gift_txn_id).catch(() => null);
+          const st = String((tx && tx.status) || '').toUpperCase();
+          if (st === 'FAILED' || st === 'REFUNDED') {
+            await refundCashout(row, 'The gift card did not go through, so your points came back.');
+            return res.json({ ready: false, failed: true, message: 'This gift card did not go through, so your points came back.' });
+          }
+          return res.json({ ready: false, message: 'Your code is almost ready. Try again in a minute.' });
+        }
+      }
+      const fresh = await db.get('SELECT gift_code_enc, gift_brand, gift_value FROM cashouts WHERE id = ?', [row.id]);
+      if (!fresh.gift_code_enc) return res.json({ ready: false, message: 'Your code is almost ready. Try again in a minute.' });
+      const cards = JSON.parse(secretBox.open(fresh.gift_code_enc, giftKey()));
+      res.json({ ready: true, brand: fresh.gift_brand, value: fresh.gift_value, cards });
+    } catch (e) {
+      console.warn('Gift code view failed | cashout=' + req.params.id + ' | ' + (e && e.name));
+      res.status(500).json({ error: 'Could not open this code. Please contact us.' });
+    }
   });
 
   async function handlePostback(req, res) {
@@ -765,6 +875,7 @@ async function createApp(opts) {
       db: db.dialect === 'pg' ? 'postgres' : 'sqlite',
       mail: healthMail(mailer),
       payouts: payoutStatus(),
+      reloadlyEnv: payouts.reloadlyEnabled(cfg) ? payouts.reloadlyEnv(cfg) : null,
       demo: cfg.demoPartner
     });
   });
@@ -790,7 +901,7 @@ async function createApp(opts) {
 
   app.get('/admin/api/cashouts', requireAdmin, async (_req, res) => {
     res.json({
-      cashouts: await db.all('SELECT * FROM cashouts ORDER BY id DESC LIMIT 200'),
+      cashouts: (await db.all('SELECT * FROM cashouts ORDER BY id DESC LIMIT 200')).map(cashoutView),
       payouts: payoutStatus()
     });
   });
@@ -800,14 +911,26 @@ async function createApp(opts) {
       const row = await db.get('SELECT * FROM cashouts WHERE id = ?', [req.params.id]);
       if (!row) return res.status(404).json({ error: 'Not found' });
       if (row.status !== 'requested') return res.status(400).json({ error: 'This cash out is already ' + row.status });
-      const result = await payouts.trySend(row, cfg, opts.payoutSendFns);
+      const result = await payouts.trySend(row, cfg, opts.payoutSendFns, { reloadly });
       const now = isoNow();
       if (result.sent) {
         await db.run(
-          `UPDATE cashouts SET status = ?, admin_note = ?, payout_provider = ?, payout_mode = ?, payout_ref = ?, payout_error = ?, updated_at = ? WHERE id = ?`,
-          ['sent', result.note, result.provider, 'provider', result.ref || null, null, now, row.id]
+          `UPDATE cashouts SET status = ?, admin_note = ?, payout_provider = ?, payout_mode = ?, payout_ref = ?, payout_error = ?, gift_txn_id = COALESCE(?, gift_txn_id), updated_at = ? WHERE id = ?`,
+          ['sent', result.note, result.provider, 'provider', result.ref || null, null, result.giftTxnId || null, now, row.id]
         );
         if (row.ledger_id) await ledger.settleDebit(db, row.ledger_id, 'paid');
+        if (result.cards) await saveCards(row.id, result.cards);
+      } else if (result.provider === 'reloadly' && result.refund) {
+        // Reloadly clearly said no, so no card was bought: give the points back.
+        console.warn('Reloadly order failed | cashout=' + row.id + ' | kind=' + result.kind + ' | ' + result.error);
+        await db.run('UPDATE cashouts SET payout_provider = ?, payout_mode = ?, payout_error = ? WHERE id = ?', ['reloadly', 'provider', result.error, row.id]);
+        await refundCashout(row, 'The gift card did not go through, so your points came back.');
+      } else if (result.provider === 'reloadly') {
+        // Not sure it went through (timeout, sign-in, empty wallet). Keep the
+        // points held and leave it "requested" so Approve can be pressed again;
+        // the same customIdentifier stops a double order.
+        console.warn('Reloadly order not finished | cashout=' + row.id + ' | kind=' + result.kind + ' | ' + result.error);
+        await db.run('UPDATE cashouts SET payout_provider = ?, payout_mode = ?, payout_error = ?, updated_at = ? WHERE id = ?', ['reloadly', 'provider', result.error, now, row.id]);
       } else {
         const note = (req.body && req.body.note) || result.note || payouts.MANUAL_NOTE;
         await db.run(
@@ -815,8 +938,10 @@ async function createApp(opts) {
           ['approved', note, result.provider, 'manual', null, result.error || null, now, row.id]
         );
       }
-      const cashout = await db.get('SELECT * FROM cashouts WHERE id = ?', [row.id]);
-      res.json({ ok: true, cashout, payout: result });
+      const cashout = cashoutView(await db.get('SELECT * FROM cashouts WHERE id = ?', [row.id]));
+      const payout = Object.assign({}, result);
+      delete payout.cards;
+      res.json({ ok: true, cashout, payout });
     } catch (e) {
       sendError(res, e);
     }

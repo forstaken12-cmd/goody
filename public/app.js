@@ -50,6 +50,9 @@
   let histStatus = 'all';
   let currentTab = 'home';
   let currentPay = 'lightning';
+  // Reloadly gift cards: the list, and what the user picked.
+  let giftShop = null;
+  let giftPick = { productId: null, value: null };
   let muted = localStorage.getItem('goody-muted') === '1';
   let audioCtx = null;
   let pollTimer = 0;
@@ -422,7 +425,9 @@
     const firstUsd = me.firstCashoutUsd || 0.5;
     $('min-ln').textContent = 'min ' + fmtUsd(first ? firstUsd : mins.lightning);
     $('min-pp').textContent = 'min ' + fmtUsd(first ? firstUsd : mins.paypal);
-    $('min-gift').textContent = 'min ' + fmtUsd(first ? firstUsd : mins.gift);
+    $('min-gift').textContent = giftOn()
+      ? 'from ' + fmtUsd(Math.min.apply(null, giftShop.brands.map((b) => b.values[0])))
+      : 'min ' + fmtUsd(first ? firstUsd : mins.gift);
     renderWalletBtn();
   }
 
@@ -458,6 +463,7 @@
     if (s === 'requested') return 'Requested';
     if (s === 'approved') return 'Approved';
     if (s === 'sent') return 'Sent';
+    if (s === 'failed') return 'Points back';
     return s;
   }
 
@@ -496,12 +502,71 @@
     box.innerHTML = cashouts.map((c) => {
       const when = new Date(c.created_at);
       const t = when.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+      if (c.gift_product_id) {
+        const see = c.status === 'sent' ? '<button type="button" class="go small" data-code="' + c.id + '">See code</button>' : '';
+        return '<div class="tx gift-tx"><div class="gift-tx-l">' +
+          (c.gift_logo ? '<img src="' + escapeHtml(c.gift_logo) + '" alt="" referrerpolicy="no-referrer" />' : '') +
+          '<div><div>' + escapeHtml(c.destination) + '</div><div class="meta">' + t + '</div></div></div>' +
+          '<div><div>−' + fmt(c.points) + ' pts</div><span class="st-pill ' + c.status + '">' + statusLabel(c.status) + '</span>' + see + '</div></div>';
+      }
       return '<div class="tx"><div><div>' + escapeHtml(c.method) + ' · ' + escapeHtml(c.destination) + '</div><div class="meta">' + t + '</div></div>' +
         '<div><div>−' + fmt(c.points) + ' pts</div><span class="st-pill ' + c.status + '">' + statusLabel(c.status) + '</span></div></div>';
     }).join('');
   }
 
+  function giftOn() { return !!(giftShop && giftShop.enabled && giftShop.brands && giftShop.brands.length); }
+  function giftPts(v) { return Math.round(v / ((me && me.pointUsd) || 0.001)); }
+  function giftBrand() { return giftOn() ? giftShop.brands.find((b) => b.productId === giftPick.productId) || null : null; }
+  function moneyLabel(v) { return '$' + (Number.isInteger(v) ? String(v) : v.toFixed(2)); }
+
+  async function loadGiftShop() {
+    try { giftShop = await api('/api/giftcards'); } catch (e) { giftShop = { enabled: false }; }
+    renderMe();
+  }
+
+  function renderGift() {
+    const on = giftOn();
+    $('gift-shop').hidden = !on;
+    $('gift-legacy').hidden = on;
+    if (!on) return;
+    const have = (me && me.balance && me.balance.available) || 0;
+    $('gift-brands').innerHTML = giftShop.brands.map((b) =>
+      '<button type="button" class="gift-brand' + (b.productId === giftPick.productId ? ' on' : '') + '" data-gb="' + b.productId + '">' +
+      (b.logo ? '<img src="' + escapeHtml(b.logo) + '" alt="" loading="lazy" referrerpolicy="no-referrer" />' : '<span class="gift-dot"></span>') +
+      '<span>' + escapeHtml(b.name) + '</span></button>').join('');
+    const b = giftBrand();
+    $('gift-amt-lbl').hidden = !b;
+    let note = '';
+    if (b) {
+      const can = b.values.filter((v) => giftPts(v) <= have);
+      if (giftPick.value != null && !can.includes(giftPick.value)) giftPick.value = null;
+      $('gift-amounts').innerHTML = can.map((v) =>
+        '<button type="button" class="chip' + (v === giftPick.value ? ' on' : '') + '" data-gv="' + v + '">' + moneyLabel(v) + '</button>').join('');
+      if (!can.length) {
+        note = 'You need ' + fmt(giftPts(b.values[0]) - have) + ' more points for a ' + moneyLabel(b.values[0]) + ' ' + b.name + ' card.';
+        $('gift-amt-lbl').hidden = true;
+      }
+      if (b.note) note = (note ? note + ' ' : '') + b.note;
+    } else {
+      $('gift-amounts').innerHTML = '';
+    }
+    $('gift-note').textContent = note;
+  }
+
   function renderWalletBtn() {
+    const giftMode = currentPay === 'gift' && giftOn();
+    $('pay-to').hidden = giftMode;
+    $('pay-to-lbl').hidden = giftMode;
+    renderGift();
+    if (giftMode) {
+      const verified = me && me.emailVerified;
+      const ready = !!(giftBrand() && giftPick.value != null && me && giftPts(giftPick.value) <= me.balance.available);
+      $('btn-cash').disabled = !(ready && verified);
+      $('wd-msg').textContent = me && !verified ? 'Please confirm your email before you cash out.' : '';
+      document.querySelectorAll('.pay-opt').forEach((x) => x.classList.toggle('on', x.getAttribute('data-pay') === currentPay));
+      $('gift-pick').hidden = false;
+      return;
+    }
     const minUsd = (!me || !me.firstCashoutDone)
       ? (me && me.firstCashoutUsd) || 0.5
       : (me.mins && me.mins[currentPay]) || 0.8;
@@ -538,7 +603,7 @@
     moveTabInk();
     if (tab === 'offers') loadOffers().catch(() => {});
     if (tab === 'history') loadHistory().catch(() => {});
-    if (tab === 'cash') { renderMe(); loadCashouts().catch(() => {}); }
+    if (tab === 'cash') { renderMe(); loadCashouts().catch(() => {}); if (!giftShop) loadGiftShop(); }
     if (tab === 'home') { renderMe(); loadOffers().catch(() => {}); }
   }
 
@@ -787,7 +852,86 @@
     b.addEventListener('click', () => { currentPay = b.getAttribute('data-pay'); renderWalletBtn(); });
   });
   $('pay-to').addEventListener('input', renderWalletBtn);
+  $('gift-brands').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-gb]');
+    if (!b) return;
+    giftPick = { productId: Number(b.getAttribute('data-gb')), value: null };
+    renderWalletBtn();
+  });
+  $('gift-amounts').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-gv]');
+    if (!b) return;
+    giftPick.value = Number(b.getAttribute('data-gv'));
+    renderWalletBtn();
+  });
+
+  function askGift() {
+    const b = giftBrand();
+    if (!b || giftPick.value == null || !me) return;
+    const v = giftPick.value;
+    const pts = giftPts(v);
+    $('wd-modal').innerHTML =
+      '<h2>Get this card?</h2>' +
+      (b.logo ? '<img class="gift-logo-big" src="' + escapeHtml(b.logo) + '" alt="" referrerpolicy="no-referrer" />' : '') +
+      '<p>A <strong>' + moneyLabel(v) + ' ' + escapeHtml(b.name) + '</strong> gift card for <strong>' + fmt(pts) + ' pts</strong>.</p>' +
+      '<p style="margin-top:10px;font-size:13px">We’ll check it first. Then your code shows up under Requests.</p>' +
+      '<button class="btn-block" id="wd-confirm">Get it</button>' +
+      '<button class="btn-block btn-ghost" id="wd-cancel">Cancel</button>';
+    $('wd-overlay').classList.add('show');
+    $('wd-cancel').onclick = () => $('wd-overlay').classList.remove('show');
+    $('wd-confirm').onclick = async () => {
+      try {
+        const r = await api('/api/cashout', { method: 'POST', body: { method: 'gift', productId: b.productId, value: v } });
+        celebrate($('wd-modal'), { noCoins: true });
+        soundOk(); haptic([10, 30, 10]);
+        $('wd-modal').innerHTML = '<h2>Requested</h2><p>' + fmt(r.cashout.points) + ' points are held while we check this. Your code will show up under Requests.</p><button class="btn-block" id="wd-done">Okay</button>';
+        $('wd-done').onclick = () => $('wd-overlay').classList.remove('show');
+        me.balance = r.balance;
+        me.firstCashoutDone = true;
+        giftPick.value = null;
+        renderMe();
+        loadCashouts();
+      } catch (e) {
+        toast('Couldn’t send', e.message);
+        $('wd-overlay').classList.remove('show');
+      }
+    };
+  }
+
+  async function showGiftCode(id) {
+    try {
+      const r = await api('/api/cashouts/' + encodeURIComponent(id) + '/code');
+      if (!r.ready) {
+        toast(r.failed ? 'Points back' : 'Almost ready', r.message || 'Try again in a minute.');
+        if (r.failed) { refresh().catch(() => {}); loadCashouts(); }
+        return;
+      }
+      const rows = (r.cards || []).map((c) =>
+        (c.cardNumber ? '<p class="field">Card number</p><div class="code-row"><code>' + escapeHtml(c.cardNumber) + '</code><button type="button" class="go small" data-copy="' + escapeHtml(c.cardNumber) + '">Copy</button></div>' : '') +
+        (c.pinCode ? '<p class="field">PIN</p><div class="code-row"><code>' + escapeHtml(c.pinCode) + '</code><button type="button" class="go small" data-copy="' + escapeHtml(c.pinCode) + '">Copy</button></div>' : '') +
+        (c.redemptionUrl && /^https:\/\//i.test(c.redemptionUrl) ? '<a class="btn-block ghost-link" href="' + escapeHtml(c.redemptionUrl) + '" target="_blank" rel="noopener noreferrer">Open card</a>' : '')
+      ).join('');
+      $('wd-modal').innerHTML = '<h2>Your ' + escapeHtml(r.brand || 'gift') + ' card</h2>' +
+        '<p style="font-size:13px">Keep this secret, like a password.</p>' + rows +
+        '<button class="btn-block" id="wd-done">Done</button>';
+      $('wd-overlay').classList.add('show');
+      $('wd-done').onclick = () => { $('wd-overlay').classList.remove('show'); $('wd-modal').innerHTML = ''; };
+      $('wd-modal').querySelectorAll('[data-copy]').forEach((btn) => {
+        btn.onclick = async () => {
+          try { await navigator.clipboard.writeText(btn.getAttribute('data-copy')); btn.textContent = 'Copied'; } catch (e) { btn.textContent = 'Hold to copy'; }
+        };
+      });
+    } catch (e) {
+      toast('Couldn’t open', e.message);
+    }
+  }
+  $('tx-list').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-code]');
+    if (b) showGiftCode(b.getAttribute('data-code'));
+  });
+
   $('btn-cash').addEventListener('click', () => {
+    if (currentPay === 'gift' && giftOn()) { askGift(); return; }
     if (!$('pay-to').value.trim() || !me) return;
     const dest = $('pay-to').value.trim();
     const label = currentPay === 'lightning' ? 'Bitcoin' : currentPay === 'paypal' ? 'PayPal' : ($('gift-kind').value + ' card');

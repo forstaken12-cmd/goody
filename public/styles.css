@@ -1070,3 +1070,26 @@ html.legal-page, body.legal-page {
 /* Cloudflare Turnstile (managed, auto theme, centered) */
 .ts-box { display: flex; justify-content: center; margin: 14px 0 2px; min-height: 65px; }
 .ts-box[hidden] { display: none; }
+
+/* Gift cards (Reloadly) */
+#pay-to[hidden], #pay-to-lbl[hidden], #gift-shop[hidden], #gift-legacy[hidden], #gift-amt-lbl[hidden] { display: none !important; }
+.gift-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 4px 0 6px; }
+.gift-brand {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  min-height: 84px; padding: 10px 6px; border: 1px solid var(--line); border-radius: 16px;
+  background: #fff; box-shadow: var(--shadow-sm); font-weight: 650; font-size: 12px; color: var(--ink);
+  transition: background 0.15s ease, transform 0.12s ease, border-color 0.15s ease;
+}
+.gift-brand img { width: 52px; height: 34px; object-fit: contain; border-radius: 6px; }
+.gift-brand .gift-dot { width: 34px; height: 34px; border-radius: 50%; background: var(--mint-s); }
+.gift-brand.on { background: var(--mint-s); border-color: rgba(15, 190, 168, 0.45); }
+.gift-brand:active { transform: scale(0.97); }
+.gift-amounts { margin: 4px 0 4px; }
+.gift-logo-big { display: block; margin: 4px auto 8px; width: 96px; height: 60px; object-fit: contain; border-radius: 10px; }
+.gift-tx-l { display: flex; align-items: center; gap: 10px; }
+.gift-tx-l img { width: 40px; height: 26px; object-fit: contain; border-radius: 5px; }
+.gift-tx .go.small { display: block; margin-top: 6px; height: 32px; min-height: 32px; font-size: 12px; padding: 0 10px; }
+.code-row { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; }
+.code-row code { flex: 1; padding: 10px 12px; border-radius: 12px; background: #F3F6F5; font-size: 15px; letter-spacing: 0.04em; word-break: break-all; user-select: all; }
+.code-row .go.small { height: 40px; min-height: 40px; padding: 0 12px; }
+.st-pill.failed { background: #FDE7E4; color: var(--coral); }

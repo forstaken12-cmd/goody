@@ -94,6 +94,7 @@
       $('pay-status').innerHTML = '<h3>Payouts</h3>' +
         '<p class="note">Database: ' + esc(st.db) + (st.mail ? ' · Email is on (' + esc(st.mail) + ')' : ' · Email is off (links go to the server log)') + '</p>' +
         payLabel(p.paypal, 'PayPal Payouts') +
+        payLabel(p.reloadly, 'Reloadly (gift cards' + (st.reloadlyEnv ? ', ' + esc(st.reloadlyEnv) : '') + ')') +
         payLabel(p.tremendous, 'Tremendous (gift cards)') +
         payLabel(p.zebedee, 'ZBD / ZEBEDEE (Bitcoin Lightning)');
       $('cash-tbl').innerHTML = table(
@@ -101,7 +102,7 @@
         c.cashouts.map((r) => [
           r.id, r.user_id, r.method, r.destination, r.points,
           r.status + (r.payout_mode === 'manual' && r.status === 'approved' ? ' · send manually' : ''),
-          r.admin_note || '',
+          (r.admin_note || '') + (r.payout_error && r.status === 'requested' ? ' · Last try: ' + r.payout_error + ' (safe to approve again)' : ''),
           r.created_at,
           actions(r)
         ])

@@ -42,7 +42,7 @@ Stop the server with Ctrl+C.
 4. When a task is finished, the partner calls `GET` or `POST /postback/:partner` with a user id, a transaction id, an amount in USD, a status, and a signature.
 5. The server checks the signature, applies the **user share** (default 70%), and writes an append-only **ledger** row. Status starts as `pending` (checking) and becomes `paid` or `rejected`. A reversal marks that credit rejected. The same transaction id will not be paid twice.
 6. The balance is **only** the sum of paid credits minus paid (or held) debits. The server never invents points.
-7. Cash out is a **request**. Email must be confirmed first. Points are held immediately. An admin approves or rejects it. If PayPal, Tremendous, or ZBD/ZEBEDEE keys are not set, approval is marked **“Approved, send manually.”** If keys are set, the matching adapter can send the payout. There is no automatic sending until those keys are present.
+7. Cash out is a **request**. Email must be confirmed first. Points are held immediately. An admin approves or rejects it. Gift cards come from Reloadly: the user picks a brand and an amount they can afford, and after an admin approves, Goody buys the card and shows the code in the user's Requests list (the code is stored locked, never logged). If Reloadly clearly says no, the points come back; if it times out or the wallet is empty, the points stay held and the admin can press Approve again safely. If PayPal, Tremendous, or ZBD/ZEBEDEE keys are not set, approval is marked **“Approved, send manually.”** If keys are set, the matching adapter can send the payout. There is no automatic sending until those keys are present.
 8. The **first** cash out can be smaller (default **$0.50**). After that, the usual minimums apply.
 9. Daily check-in, streaks, and daily goals also go through the demo partner as signed postbacks, so those gifts still come from a “partner payment,” not from thin air.
 
@@ -71,7 +71,7 @@ See **PARTNERS.md** for who to apply to, what they usually ask for, and the exac
 - 18+ age rule, agreement required at signup
 - Points ledger, pending → paid → rejected, playtime milestones, filters, history, streaks, first $0.50 cash out
 - Admin page, including payout status and “Approved, send manually” when providers are not connected
-- Payout adapters ready for PayPal Payouts, Tremendous, and ZBD / ZEBEDEE (not called unless keys are set)
+- Payout adapters ready for PayPal Payouts, Reloadly gift cards, Tremendous, and ZBD / ZEBEDEE (not called unless keys are set)
 - Signed, idempotent postbacks and reversals, including Lootably and Torox verifiers from their public docs
 - Basic rate limits and a device-fingerprint note
 
@@ -101,6 +101,7 @@ Age and Terms live in `server/lib/policy.js`: `MIN_AGE` (18, because Lootably re
 - Google sign-in: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (see AUTH-SETUP.md)
 - Apple sign-in: `APPLE_CLIENT_ID` (Services ID), `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`. Sign in with Apple needs a paid Apple Developer Program membership ($99 USD/year; confirm on Apple’s site). Optional domain-verify file: `APPLE_DOMAIN_ASSOCIATION`
 - `MAIL_FROM` and `BREVO_API_KEY` (preferred on Render; HTTP API). SMTP (`SMTP_URL` or `SMTP_HOST`+`SMTP_USER`+`SMTP_PASS`) and `SENDGRID_API_KEY` also work where outbound SMTP is allowed. If more than one is set, Brevo is used first.
+- Gift cards: `RELOADLY_CLIENT_ID`, `RELOADLY_CLIENT_SECRET`, `RELOADLY_ENV` (`sandbox` for TEST keys, `live` for LIVE keys; they must match), and `GIFT_CODE_KEY` (any long random text; locks saved codes; set once and keep it)
 - Payout keys, when you are ready: `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_ENV`; `TREMENDOUS_API_KEY`, `TREMENDOUS_CAMPAIGN_ID`, `TREMENDOUS_ENV`; `ZBD_API_KEY` or `ZEBEDEE_API_KEY`, plus `BTC_USD`
 - Partner secrets, when you are approved: `BITLABS_SECRET`, `ADGEM_POSTBACK_KEY`, `CPX_SECURE_HASH`, `TOROX_SECRET`, `LOOTABLY_POSTBACK_SECRET`, and later `AYET_SECRET` / `THEOREMREACH_SECRET` after you confirm official docs
 

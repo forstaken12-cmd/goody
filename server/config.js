@@ -36,6 +36,11 @@ const config = {
   canonicalRedirect: envStr('CANONICAL_REDIRECT') !== '0',
   contactEmail: resolveContactEmail(envStr('CONTACT_EMAIL')),
   turnstileSiteKey: envStr('TURNSTILE_SITE_KEY'),
+  reloadlyClientId: envStr('RELOADLY_CLIENT_ID'),
+  reloadlyClientSecret: envStr('RELOADLY_CLIENT_SECRET'),
+  reloadlyEnv: envStr('RELOADLY_ENV') || 'sandbox',
+  // Locks gift card codes in the database. Falls back to the Reloadly secret.
+  giftCodeKey: envStr('GIFT_CODE_KEY'),
   turnstileSecretKey: envStr('TURNSTILE_SECRET_KEY'),
   sharePct: Math.min(0.9, Math.max(0.5, num('USER_SHARE', 0.7))),
   pointUsd: num('POINT_USD', 0.001),

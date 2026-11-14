@@ -113,6 +113,12 @@ CREATE TABLE IF NOT EXISTS cashouts (
   payout_mode TEXT,
   payout_ref TEXT,
   payout_error TEXT,
+  gift_product_id INTEGER,
+  gift_brand TEXT,
+  gift_value REAL,
+  gift_logo TEXT,
+  gift_txn_id TEXT,
+  gift_code_enc TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -253,7 +259,14 @@ async function migrate(db) {
     ['cashouts', 'payout_provider', 'TEXT'],
     ['cashouts', 'payout_mode', 'TEXT'],
     ['cashouts', 'payout_ref', 'TEXT'],
-    ['cashouts', 'payout_error', 'TEXT']
+    ['cashouts', 'payout_error', 'TEXT'],
+    // Reloadly gift cards: which card, and its code (locked, never plain text).
+    ['cashouts', 'gift_product_id', 'INTEGER'],
+    ['cashouts', 'gift_brand', 'TEXT'],
+    ['cashouts', 'gift_value', 'REAL'],
+    ['cashouts', 'gift_logo', 'TEXT'],
+    ['cashouts', 'gift_txn_id', 'TEXT'],
+    ['cashouts', 'gift_code_enc', 'TEXT']
   ];
   for (const [table, name, typ] of extras) {
     await addColumnIfMissing(db, table, name, typ);
