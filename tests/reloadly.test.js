@@ -164,6 +164,21 @@ test('curated brands come from the catalog, with logos, values, and the Amazon $
   assert.equal(payouts.validGiftValue(CATALOG[0], 5.555), false);
 });
 
+test('sandbox and live product names both match the curated list', () => {
+  const names = (list) => payouts.curateBrands(list.map((n, i) => ({
+    productId: i + 1, productName: n, status: 'ACTIVE', denominationType: 'RANGE', recipientCurrencyCode: 'USD',
+    minRecipientDenomination: 1, maxRecipientDenomination: 100, logoUrls: ['https://cdn.reloadly.com/x.png']
+  }))).map((b) => b.key + ':' + b.productName);
+  assert.deepEqual(names([
+    'Rewarble VISA Global US', 'Visa Prepaid US $1 to $150', 'Mastercard (Virtual) 1$ to $100 US',
+    'App Store & iTunes US', 'Swype Global Virtual Mastercard® 3 years ($5 to $99.99) USD US'
+  ]), ['visa:Visa Prepaid US $1 to $150', 'mastercard:Mastercard (Virtual) 1$ to $100 US', 'apple:App Store & iTunes US']);
+  const live = payouts.curateBrands([{ productId: 9, productName: 'Mastercard® eReward Virtual Account, 6-Month Expiration [DOM] & [INTL] US',
+    status: 'ACTIVE', denominationType: 'RANGE', recipientCurrencyCode: 'USD', minRecipientDenomination: 5, maxRecipientDenomination: 100, logoUrls: [] }]);
+  assert.equal(live[0].key, 'mastercard');
+  assert.match(live[0].note, /6 months/);
+});
+
 test('token is cached until it expires; catalog is cached for a few hours', async () => {
   const fake = fakeReloadly({});
   let now = 1_000_000;

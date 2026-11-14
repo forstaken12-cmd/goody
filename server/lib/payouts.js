@@ -100,8 +100,10 @@ const GIFT_BRANDS = [
   { key: 'amazon', label: 'Amazon', match: /^amazon(\.com)? us$/i, note: 'Amazon US cards start at $5 (since July 2026).' },
   { key: 'target', label: 'Target', match: /^target us$/i },
   { key: 'walmart', label: 'Walmart', match: /^walmart( usa)? us$/i },
-  { key: 'visa', label: 'Visa prepaid', match: /^visa.*(prepaid|virtual|reward).* us$/i },
-  { key: 'mastercard', label: 'Mastercard prepaid', match: /^mastercard.*(prepaid|virtual|ereward).* us$/i, note: 'Works like a card you can use online. Expires after 6 months.' },
+  // Names differ between sandbox and live, e.g. "Visa Prepaid US $1 to $150",
+  // "Mastercard (Virtual) 1$ to $100 US", "Mastercard® eReward Virtual Account, 6-Month Expiration ... US".
+  { key: 'visa', label: 'Visa prepaid', match: /^visa\b.*\b(prepaid|virtual|e?reward)\b.*\bUS\b/i },
+  { key: 'mastercard', label: 'Mastercard prepaid', match: /^mastercard\b.*\b(prepaid|virtual|e?reward)\b.*\bUS\b/i },
   { key: 'googleplay', label: 'Google Play', match: /^google play us$/i },
   { key: 'apple', label: 'Apple', match: /^(apple|app store (&|and) itunes) us$/i },
   { key: 'roblox', label: 'Roblox', match: /^roblox us$/i },
@@ -133,7 +135,7 @@ function curateBrands(products) {
       min: fixed ? values[0] : Number(p.minRecipientDenomination),
       max: fixed ? values[values.length - 1] : Number(p.maxRecipientDenomination),
       values,
-      note: b.note || null
+      note: b.note || (/6-month/i.test(String(p.productName)) ? 'Works like a card you can use online. Expires after 6 months.' : null)
     });
   }
   return out;
