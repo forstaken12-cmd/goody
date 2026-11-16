@@ -7,7 +7,7 @@ const config = require('./config');
 const { openDb } = require('./db');
 const { creditFromPartner, ptsToUsd, usdToPts, money, isoNow } = require('./lib/money');
 const ledger = require('./lib/ledger');
-const { verifyAndParse, signGeneric } = require('./lib/postback');
+const { verifyAndParse, signGeneric, cpxWallUrl } = require('./lib/postback');
 const auth = require('./lib/auth');
 const { createLimiter } = require('./lib/rateLimit');
 const { listOffers, findOffer } = require('./demo/catalog');
@@ -132,7 +132,7 @@ async function createApp(opts) {
     if (!user) {
       throw Object.assign(new Error('unknown user'), { http: 400, code: 'NO_USER' });
     }
-    const source = result.fields.sourceHint || 'offer';
+    const source = partnerCfg.source || result.fields.sourceHint || 'offer';
     const applied = await ledger.applyPostback(db, {
       userId: user.id,
       partner: partnerKey,
@@ -141,7 +141,7 @@ async function createApp(opts) {
       source,
       partnerUsd: result.fields.partnerUsd,
       status: result.fields.status,
-      note: (query && query.note) || (result.body && result.body.note) || null,
+      note: partnerCfg.label || (query && query.note) || (result.body && result.body.note) || null,
       sharePct: cfg.sharePct,
       pointUsd: cfg.pointUsd
     });
@@ -232,9 +232,11 @@ async function createApp(opts) {
       termsVersion: policy.TERMS_VERSION,
       contactEmail: contactAddress(cfg),
       oauth: oauth.providersStatus(cfg),
-      turnstileSiteKey: turnstile.turnstileEnabled(cfg) ? cfg.turnstileSiteKey : null
+      turnstileSiteKey: turnstile.turnstileEnabled(cfg) ? cfg.turnstileSiteKey : null,
+      walls: { cpx: cpxReady() }
     });
   });
+
 
   async function captchaOk(req, res, opts2) {
     if (!turnstile.turnstileEnabled(cfg)) return true;
@@ -518,6 +520,21 @@ async function createApp(opts) {
     res.status(403).json({ error: policy.agreeMessage(), code: 'NEED_AGREE' });
   }
 
+  // ----- survey / offer walls -----
+  function cpxReady() {
+    const c = cfg.partners && cfg.partners.cpx;
+    return !!(c && c.enabled && c.secret);
+  }
+  // The CPX survey wall link for the signed-in user. The security hash stays on the
+  // server; the browser only gets md5(ext_user_id + "-" + hash).
+  app.get('/api/walls/cpx', requireUser, requireTerms, (req, res) => {
+    if (!cpxReady()) return res.status(503).json({ error: 'Surveys are not switched on yet.' });
+    const c = cfg.partners.cpx;
+    const url = cpxWallUrl({ appId: c.appId || '38062', secret: c.secret, extUserId: req.user.public_id });
+    res.set('Cache-Control', 'no-store');
+    res.json({ partner: 'cpx', name: c.name || 'CPX Research', url });
+  });
+
   app.post('/api/auth/agree', sessionLimit, requireUser, async (req, res) => {
     try {
       const body = req.body || {};
@@ -795,9 +812,19 @@ async function createApp(opts) {
     }
   });
 
+  function postbackIpAllowed(partnerCfg, req) {
+    const list = partnerCfg && Array.isArray(partnerCfg.allowedIps) ? partnerCfg.allowedIps : [];
+    if (!list.length) return true;
+    const ip = String(req.ip || '').replace(/^::ffff:/, '');
+    return list.includes(ip);
+  }
+
   async function handlePostback(req, res) {
     const key = String(req.params.partner || '').toLowerCase();
     try {
+      if (!postbackIpAllowed(cfg.partners[key], req)) {
+        throw Object.assign(new Error('ip not allowed'), { http: 403 });
+      }
       const out = await ingest({ partnerKey: key, req, query: Object.assign({}, req.query, req.body) });
       const partnerCfg = cfg.partners[key];
       if (partnerCfg && partnerCfg.successBody === '1') {

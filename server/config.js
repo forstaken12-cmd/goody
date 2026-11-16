@@ -115,11 +115,19 @@ config.partners = {
   },
   cpx: {
     name: 'CPX Research',
-    secret: process.env.CPX_SECURE_HASH || '',
+    // CPX calls it the app "security hash" (older Goody docs said CPX_SECURE_HASH; both work).
+    secret: process.env.CPX_SECURITY_HASH || process.env.CPX_SECURE_HASH || '',
+    appId: String(process.env.CPX_APP_ID || '38062').trim(),
     style: 'cpx',
-    enabled: !!process.env.CPX_SECURE_HASH,
-    notes: 'Publisher docs/examples: md5(trans_id + "-" + app secure hash) in secure_hash. Params: user_id, trans_id, amount_usd, amount_local, status (1 = complete, 2 = canceled). Re-check the live dashboard docs at launch.'
+    source: 'survey',
+    label: 'CPX Research survey',
+    enabled: !!(process.env.CPX_SECURITY_HASH || process.env.CPX_SECURE_HASH),
+    // Optional: comma-separated IPs allowed to send CPX postbacks. CPX does not publish
+    // a fixed list in its public docs, so this is off unless you set it.
+    allowedIps: String(process.env.CPX_POSTBACK_IPS || '').split(',').map((x) => x.trim()).filter(Boolean),
+    notes: 'Survey wall iframe: offers.cpx-research.com/index.php?app_id&ext_user_id&secure_hash=md5(ext_user_id + "-" + security hash). Postback: status 1 = completed, 2 = canceled (reversal); hash = md5(trans_id + "-" + security hash). Credit from amount_usd (publisher USD), not amount_local.'
   },
+
   ayet: {
     name: 'ayeT-Studios',
     secret: process.env.AYET_SECRET || '',

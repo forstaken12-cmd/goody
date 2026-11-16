@@ -77,7 +77,11 @@ function verifyAdgem(req, secret, publicBaseUrl) {
   return { ok: false, reason: 'missing signature' };
 }
 
-/** CPX Research (publisher examples): md5(trans_id + "-" + app secure hash). */
+/**
+ * CPX Research postback: {secure_hash} = md5(trans_id + "-" + app security hash).
+ * The publisher dashboard's postback macro is {secure_hash}; Goody accepts it as
+ * hash= or secure_hash= in the URL.
+ */
 function verifyCpx(body, secret) {
   const transId = first(body, ['trans_id', 'transid', 'transaction_id']);
   const got = first(body, ['secure_hash', 'hash']);
@@ -129,6 +133,17 @@ function verifyTorox(body, secret) {
   return { ok, reason: ok ? 'ok' : 'bad signature' };
 }
 
+/** CPX survey wall link for one user: secure_hash = md5(ext_user_id + "-" + security hash). */
+function cpxWallUrl({ appId, secret, extUserId, subid1, subid2 }) {
+  const q = new URLSearchParams();
+  q.set('app_id', String(appId));
+  q.set('ext_user_id', String(extUserId));
+  if (secret) q.set('secure_hash', md5(String(extUserId) + '-' + secret));
+  if (subid1) q.set('subid_1', String(subid1));
+  if (subid2) q.set('subid_2', String(subid2));
+  return 'https://offers.cpx-research.com/index.php?' + q.toString();
+}
+
 function signGeneric({ uid, txid, payout, status }, secret) {
   const payload = [uid, txid, payout, status].map((x) => (x == null ? '' : String(x))).join('|');
   return hmac('sha256', secret, payload, 'hex');
@@ -137,8 +152,11 @@ function signGeneric({ uid, txid, payout, status }, secret) {
 function parseStatus(style, body) {
   const raw = String(first(body, ['status', 'state', 'type', 'offer_state']) || 'paid').toLowerCase();
   if (style === 'cpx') {
-    if (String(body.status) === '2' || raw === '2') return 'reversal';
-    return 'paid';
+    // CPX: 1 = completed, 2 = canceled / chargeback. Anything else is not ours to guess.
+    const st = String(body.status == null ? '' : body.status).trim();
+    if (st === '1') return 'paid';
+    if (st === '2') return 'reversal';
+    return 'unknown';
   }
   if (style === 'bitlabs') {
     if (raw === 'reconciliation' || raw === 'reversal' || raw === 'chargeback') return 'reversal';
@@ -162,6 +180,19 @@ function parseStatus(style, body) {
 }
 
 function parseFields(style, body) {
+  if (style === 'cpx') {
+    // Credit from publisher USD ({amount_usd}), never {amount_local}.
+    const usd = Number(body.amount_usd);
+    const offer = first(body, ['offer_ID', 'offer_id', 'offerid']);
+    return {
+      uid: body.user_id != null && body.user_id !== '' ? String(body.user_id) : undefined,
+      txid: body.trans_id != null && body.trans_id !== '' ? String(body.trans_id) : undefined,
+      partnerUsd: Number.isFinite(usd) ? Math.abs(usd) : 0,
+      offerId: offer != null ? String(offer) : undefined,
+      sourceHint: undefined,
+      status: parseStatus(style, body)
+    };
+  }
   const uid = first(body, ['uid', 'user_id', 'userid', 'userID', 'player_id', 'external_identifier', 'USER:ID', 'USER:UID']);
   const txid = first(body, ['txid', 'tx_id', 'tx', 'transaction_id', 'transactionID', 'trans_id', 'conversion_id', 'id', 'TX', 'request_id']);
   const payout = Number(first(body, ['payout', 'payout_usd', 'amount_usd', 'usd', 'raw', 'partner_usd', 'VALUE:USD', 'revenue']));
@@ -205,10 +236,13 @@ function verifyAndParse(req, partnerCfg, publicBaseUrl) {
   if (!fields.uid || !fields.txid) {
     return { ok: false, reason: 'missing user or transaction id', http: 400, fields };
   }
+  if (fields.status === 'unknown') {
+    return { ok: false, reason: 'unknown status', http: 400, fields };
+  }
   return { ok: true, fields, body };
 }
 
 module.exports = {
   hmac, md5, timingSafeEqual, verifyAndParse, signGeneric, parseFields, parseStatus,
-  verifyBitlabs, verifyAdgem, verifyCpx, verifyGeneric, verifyLootably, verifyTorox, buildFullUrl
+  verifyBitlabs, verifyAdgem, verifyCpx, verifyGeneric, verifyLootably, verifyTorox, buildFullUrl, cpxWallUrl
 };

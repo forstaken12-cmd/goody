@@ -66,13 +66,27 @@
           </div>
         </div>
         <div class="feat-head">For you</div>
-        <div id="feat-list"></div>
+        <article class="card compact offer-card wall-card" data-wall="cpx" id="wall-card-home" hidden>
+          <div class="prog-ring off tile-wrap"><div class="app-tile t-survey"><span class="tile-gloss"></span><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9"><rect x="6" y="3.5" width="12" height="17" rx="2.5" fill="#fff" stroke="none"/><path d="M9 3.5h6v2.6H9z" fill="#2A9FD8" stroke="none"/><path d="M9 11h6M9 14.5h4" stroke="#2A9FD8"/></svg></div></div>
+          <div class="offer-body"><h3>Survey wall</h3>
+            <div class="meta"><span class="tag new">Real pay</span>by CPX Research</div>
+            <div class="note">Share your opinion in short surveys. Points arrive when each one is done.</div></div>
+          <div class="offer-actions"><button type="button" class="go start-btn" data-wall="cpx">Open surveys</button></div>
+        </article>
+                <div id="feat-list"></div>
       </section>
 
       <section class="screen" id="screen-offers" data-tab="offers">
         <h2 class="section-title">Offers</h2>
         <p class="section-lead">Finish a task, then we check it.</p>
-        <div class="chip-row" id="filter-row">
+        <article class="card compact offer-card wall-card" data-wall="cpx" id="wall-card-offers" hidden>
+          <div class="prog-ring off tile-wrap"><div class="app-tile t-survey"><span class="tile-gloss"></span><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9"><rect x="6" y="3.5" width="12" height="17" rx="2.5" fill="#fff" stroke="none"/><path d="M9 3.5h6v2.6H9z" fill="#2A9FD8" stroke="none"/><path d="M9 11h6M9 14.5h4" stroke="#2A9FD8"/></svg></div></div>
+          <div class="offer-body"><h3>Survey wall</h3>
+            <div class="meta"><span class="tag new">Real pay</span>by CPX Research</div>
+            <div class="note">Share your opinion in short surveys. Points arrive when each one is done.</div></div>
+          <div class="offer-actions"><button type="button" class="go start-btn" data-wall="cpx">Open surveys</button></div>
+        </article>
+                <div class="chip-row" id="filter-row">
           <button class="chip on" data-cat="all">All</button>
           <button class="chip" data-cat="games">Games</button>
           <button class="chip" data-cat="apps">Apps</button>
@@ -292,6 +306,24 @@
 
   <div class="overlay" id="offer-overlay">
     <div class="modal left" id="offer-modal"></div>
+  </div>
+
+  <div class="overlay wall-overlay" id="wall-overlay" role="dialog" aria-modal="true" aria-labelledby="wall-title">
+    <div class="wall-sheet">
+      <div class="wall-head">
+        <div>
+          <h2 id="wall-title">Surveys</h2>
+          <p class="note">By CPX Research. Points show up in History.</p>
+        </div>
+        <button type="button" class="icon-btn" id="wall-close" aria-label="Close surveys" title="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="wall-body">
+        <div class="wall-loading" id="wall-loading">Loading surveys…</div>
+        <iframe id="wall-frame" title="CPX Research surveys" referrerpolicy="no-referrer-when-downgrade" allow="clipboard-write" hidden></iframe>
+      </div>
+    </div>
   </div>
 
   <div class="overlay" id="wd-overlay">

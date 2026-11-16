@@ -825,6 +825,47 @@
     const b = e.target.closest('[data-offer]');
     if (b) openOffer(b.getAttribute('data-offer'));
   }
+  // ----- CPX Research survey wall -----
+  let wallsCfg = {};
+  function applyWalls(walls) {
+    wallsCfg = walls || {};
+    document.querySelectorAll('.wall-card[data-wall="cpx"]').forEach((el) => { el.hidden = !wallsCfg.cpx; });
+  }
+  async function openWall(name) {
+    if (name !== 'cpx') return;
+    const ov = $('wall-overlay');
+    const frame = $('wall-frame');
+    $('wall-loading').textContent = 'Loading surveys…';
+    $('wall-loading').hidden = false;
+    frame.hidden = true;
+    ov.classList.add('show');
+    document.body.style.overflow = 'hidden';
+    try {
+      const data = await api('/api/walls/cpx');
+      frame.onload = () => { $('wall-loading').hidden = true; };
+      frame.src = data.url;
+      frame.hidden = false;
+    } catch (e) {
+      $('wall-loading').textContent = e.message || 'Surveys could not load. Try again soon.';
+    }
+  }
+  function closeWall() {
+    $('wall-overlay').classList.remove('show');
+    document.body.style.overflow = '';
+    const frame = $('wall-frame');
+    frame.removeAttribute('src');
+    frame.hidden = true;
+    refresh().catch(() => {});
+  }
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('.wall-card [data-wall], .wall-card');
+    if (b && !e.target.closest('#wall-overlay')) openWall(b.getAttribute('data-wall'));
+  });
+  $('wall-close').addEventListener('click', closeWall);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && $('wall-overlay').classList.contains('show')) closeWall();
+  });
+
   $('feat-list').addEventListener('click', onOfferClick);
   $('offer-list').addEventListener('click', onOfferClick);
   $('filter-row').addEventListener('click', (e) => {
@@ -1006,6 +1047,7 @@
       applyOauthButtons(cfg.oauth);
       applyContactEmail(cfg.contactEmail);
       applyPolicy(cfg);
+      applyWalls(cfg.walls);
       setupTurnstile(cfg.turnstileSiteKey);
     } catch (e) { /* ignore */ }
     const path = location.pathname;
