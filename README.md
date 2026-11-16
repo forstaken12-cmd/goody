@@ -2,7 +2,7 @@
 
 A rewards app: people finish little tasks (install an app, play for a while, or take a survey). The offer partner pays us, and we pass most of that on as points. People can then ask to cash out.
 
-This is the real project (a Node server + a phone-sized web app). The built-in **demo partner** lets you try the whole path without real partner accounts. No real money is sent until you connect payout providers and approve requests.
+This is the real project (a Node server + a phone-sized web app). The built-in **demo partner** is off unless you set `DEMO_PARTNER=1`. Use it locally to try the whole path without real partner accounts. Keep it off on the live site, where cash-outs pay real money.
 
 The live site is [https://goody.day](https://goody.day). The old `goody-dfi5.onrender.com` address and `www.goody.day` redirect there for page visits (postbacks, `/api/health`, and POSTs are not redirected; set `CANONICAL_REDIRECT=0` to turn this off). It auto-deploys from the `main` branch of this repo.
 
@@ -15,7 +15,7 @@ You need Node.js 20 or later.
 ```bash
 cd goody
 npm install
-cp .env.example .env    # optional; defaults work for a local demo
+cp .env.example .env    # optional; set DEMO_PARTNER=1 for the local fake catalog
 npm start
 ```
 
@@ -44,7 +44,7 @@ Stop the server with Ctrl+C.
 6. The balance is **only** the sum of paid credits minus paid (or held) debits. The server never invents points.
 7. Cash out is a **request**. Email must be confirmed first. Points are held immediately. An admin approves or rejects it. Gift cards come from Reloadly: the user picks a brand and an amount they can afford, and after an admin approves, Goody buys the card and shows the code in the user's Requests list (the code is stored locked, never logged). If Reloadly clearly says no, the points come back; if it times out or the wallet is empty, the points stay held and the admin can press Approve again safely. If PayPal, Tremendous, or ZBD/ZEBEDEE keys are not set, approval is marked **“Approved, send manually.”** If keys are set, the matching adapter can send the payout. There is no automatic sending until those keys are present.
 8. The **first** cash out can be smaller (default **$0.50**). After that, the usual minimums apply.
-9. Daily check-in, streaks, and daily goals also go through the demo partner as signed postbacks, so those gifts still come from a “partner payment,” not from thin air.
+9. When the demo partner is on, daily check-in, streaks, and daily goals also go through it as signed postbacks, so those gifts still come from a “partner payment,” not from thin air. Those gifts stay off when the demo partner is off.
 
 ### Database
 
@@ -105,4 +105,4 @@ Age and Terms live in `server/lib/policy.js`: `MIN_AGE` (18, because Lootably re
 - Payout keys, when you are ready: `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_ENV`; `TREMENDOUS_API_KEY`, `TREMENDOUS_CAMPAIGN_ID`, `TREMENDOUS_ENV`; `ZBD_API_KEY` or `ZEBEDEE_API_KEY`, plus `BTC_USD`
 - Partner secrets, when you are approved: `BITLABS_SECRET`, `ADGEM_POSTBACK_KEY`, `CPX_SECURITY_HASH` (+ `CPX_APP_ID`, default 38062), `TOROX_SECRET`, `LOOTABLY_POSTBACK_SECRET`, and later `AYET_SECRET` / `THEOREMREACH_SECRET` after you confirm official docs
 
-`ADMIN_PASSWORD` and `DEMO_PARTNER_SECRET` should already be set on the live service.
+`ADMIN_PASSWORD` should already be set on the live service. Leave `DEMO_PARTNER` unset (or anything other than `1`) so practice offers stay off. `DEMO_PARTNER_SECRET` is only needed when you turn the demo partner on locally.

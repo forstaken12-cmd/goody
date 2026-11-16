@@ -101,6 +101,10 @@ async function createApp(opts) {
     if (opts.config.partners && opts.config.partners.demo) {
       cfg.partners.demo = Object.assign({}, config.partners.demo, opts.config.partners.demo);
     }
+    // Keep the demo partner flag and its postback entry in sync when tests or callers override it.
+    if (Object.prototype.hasOwnProperty.call(opts.config, 'demoPartner')) {
+      cfg.partners.demo = Object.assign({}, cfg.partners.demo, { enabled: !!cfg.demoPartner });
+    }
   }
   const mailer = opts.mailer || createMailer(cfg);
   const db = opts.db || (await openDb({
@@ -583,6 +587,7 @@ async function createApp(opts) {
   });
 
   app.get('/api/offers', requireUser, (req, res) => {
+    if (!cfg.demoPartner) return res.json({ offers: [] });
     const category = req.query.category || 'all';
     const sort = req.query.sort || 'highest';
     const list = listOffers({ category, sort }).map((o) => offerView(o, cfg.sharePct, cfg.pointUsd));
@@ -590,6 +595,7 @@ async function createApp(opts) {
   });
 
   app.get('/api/offers/:id', requireUser, async (req, res) => {
+    if (!cfg.demoPartner) return res.status(404).json({ error: 'Offer not found' });
     const o = findOffer(req.params.id);
     if (!o) return res.status(404).json({ error: 'Offer not found' });
     const prog = await db.get('SELECT * FROM offer_progress WHERE user_id = ? AND offer_id = ?', [req.user.id, o.id]);

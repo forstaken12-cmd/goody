@@ -51,7 +51,8 @@ const config = {
     gift: num('MIN_GIFT_USD', 2.0)
   },
   tz: process.env.TZ || 'America/Boise',
-  demoPartner: process.env.DEMO_PARTNER !== '0',
+  // Off unless explicitly set to 1. Must stay off on the live site (real cash-outs).
+  demoPartner: process.env.DEMO_PARTNER === '1',
   demoPendingMs: num('DEMO_PENDING_MS', 1200),
   demoPaidMs: num('DEMO_PAID_MS', 2200),
   demoRejectRate: num('DEMO_REJECT_RATE', 0.1),

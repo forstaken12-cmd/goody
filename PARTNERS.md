@@ -94,6 +94,10 @@ Always credit from the partner’s **publisher USD** field (BitLabs `RAW` / `VAL
 
   Set `TOROX_SECRET` to the app placement key. Goody checks `md5(oid + "-" + user_id + "-" + key)` as the guide describes. **They expect a plain `1` on success and `0` on failure.** Goody returns that. They say postbacks come from IP `44.212.211.226` and that you may whitelist it. Reversal postbacks are off by default; if you turn them on, they use a **new** conversion id and a negative payout — Goody will record a rejected row, but it will not automatically tie that row to the original credit. Plan for that before you enable reversals.
 
+## Demo partner (local only)
+
+Goody ships with a fake offer catalog and signed demo postbacks so you can try the full path on your machine. It is **off unless** you set `DEMO_PARTNER=1`. Do not set that on the live Render service: practice offers would let anyone earn points that can be cashed out as real gift cards. Daily check-in and goal bonuses also go through this partner, so they stay off when it is off. The CPX Research survey wall (and any other real partner you enable) still works with the demo partner off.
+
 ## After you are approved
 
 1. Set the postback URL and secret on Render (never in git).

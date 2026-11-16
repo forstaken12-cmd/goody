@@ -113,6 +113,7 @@ test('cpxWallUrl: app_id, ext_user_id, secure_hash = md5(ext_user_id + "-" + has
 
 test('config says the CPX wall is on; wall link needs a session', async () => {
   const cfg = await req('GET', '/api/config');
+  assert.equal(cfg.data.demo, false);
   assert.equal(cfg.data.walls.cpx, true);
   const anon = await req('GET', '/api/walls/cpx');
   assert.equal(anon.status, 401);

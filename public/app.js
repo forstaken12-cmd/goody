@@ -446,7 +446,20 @@
       '</div></article>';
   }
 
+  function setDemoCatalogVisible(on) {
+    if ($('filter-row')) $('filter-row').hidden = !on;
+    if ($('sort-row')) $('sort-row').hidden = !on;
+  }
+
   async function loadOffers() {
+    const demoOn = !!(me && me.demo);
+    setDemoCatalogVisible(demoOn);
+    if (!demoOn) {
+      offers = [];
+      if ($('offer-list')) $('offer-list').innerHTML = '';
+      if ($('feat-list')) $('feat-list').innerHTML = '';
+      return;
+    }
     const data = await api('/api/offers?category=' + encodeURIComponent(category) + '&sort=' + encodeURIComponent(sort));
     offers = data.offers || [];
     $('offer-list').innerHTML = offers.length
@@ -1044,6 +1057,7 @@
       const cfg = await fetch('/api/config', { credentials: 'same-origin' }).then((r) => r.json());
       if ($('welcome-demo')) $('welcome-demo').hidden = !cfg.demo;
       if ($('demo-badge') && !signedIn) $('demo-badge').hidden = !cfg.demo;
+      setDemoCatalogVisible(!!cfg.demo);
       applyOauthButtons(cfg.oauth);
       applyContactEmail(cfg.contactEmail);
       applyPolicy(cfg);
