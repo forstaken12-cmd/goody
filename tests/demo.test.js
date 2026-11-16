@@ -102,3 +102,8 @@ test('DEMO_PARTNER can be turned on through opts.config', async () => {
   assert.equal(one.status, 200);
   assert.equal(one.data.offer.id, list.data.offers[0].id);
 });
+
+test('the welcome demo note starts hidden so the live site does not flash it', () => {
+  const html = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  assert.match(html, /id="welcome-demo"[^>]*\bhidden\b/);
+});
