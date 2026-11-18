@@ -10,7 +10,7 @@ https://goody.day/postback/<partner>
 
 The old address `https://goody-dfi5.onrender.com/postback/<partner>` still works (postbacks are never redirected), but use `goody.day` for anything new.
 
-Replace `<partner>` with `bitlabs`, `cpx`, `adgem`, `ayet`, `torox`, `lootably`, or `theoremreach`. Put that URL (plus any macros the partner asks for) in their dashboard. Then set the matching secret on the Render service. Do not put secrets in this repo.
+Replace `<partner>` with `bitlabs`, `cpx`, `adgem`, `ayet`, `torox`, `lootably`, `theoremreach`, or `rapidoreach`. Put that URL (plus any macros the partner asks for) in their dashboard. Then set the matching secret on the Render service. Do not put secrets in this repo.
 
 ## Revenue share (important)
 
@@ -58,12 +58,14 @@ Always credit from the partner’s **publisher USD** field (BitLabs `RAW` / `VAL
 - What it is: offerwall and surveywall. Account docs: [Creating an Account](https://docs.ayetstudios.com/v/product-docs/dashboard-setup/account/creating-an-account). Register: [ayetstudios.com/account/login/register-publisher](https://ayetstudios.com/account/login/register-publisher). Callbacks: [Offerwall Callbacks](https://docs.ayetstudios.com/v/product-docs/callbacks-and-testing/callbacks/offerwall-callbacks), [Publisher API](https://www.ayetstudios.com/openapi/publisher-doc).
 - How to apply: open the dashboard, choose Create Account, select Publisher (monetize your apps), say whether you are a business or a person, and fill in name, address, country, and email. You must agree to their Publisher Terms and Privacy Policy.
 - What they require: I did not find a separate public “approval checklist” beyond creating the publisher account and a placement. Confirm any extra review steps with Ayet after you sign up.
-- How to plug into Goody: under Placements / Apps, set the Callback URL to something like:
+- Status: publisher account 4096523, placement 26403 `goody_web`, Web Surveywall ad slot 31452 and Web Offerwall ad slot 31454 (700 points per $1), placement under review.
+- Goody shows two cards on Offers once `AYET_API_KEY` is set: **Survey picks** (`https://surveys.ayet.io/surveys?adSlot=31452&external_identifier=<Goody public id>`) and **Offer wall** (`https://offerwall.ayet.io/offers?adSlot=31454&externalIdentifier=<Goody public id>`), built by `GET /api/walls/ayet_surveys` and `/api/walls/ayet_offers`.
+- Render env: `AYET_API_KEY` = the publisher API key from ayeT dashboard → Settings (the old name `AYET_SECRET` also works). Optional: `AYET_SURVEYWALL_SLOT` (31452), `AYET_OFFERWALL_SLOT` (31454), `AYET_PLACEMENT_ID` (26403, for reference), `AYET_POSTBACK_IPS`.
+- Callback URL (Placements / Apps → edit placement 26403 → Callback URL), with Reversal Callbacks on:
 
-  `https://goody.day/postback/ayet?uid={external_identifier}&txid={transaction_id}&payout={payout_usd}&status={callback_type}`
+  `https://goody.day/postback/ayet?external_identifier={external_identifier}&transaction_id={transaction_id}&payout_usd={payout_usd}&currency_amount={currency_amount}&is_chargeback={is_chargeback}&offer_id={offer_id}&adslot_id={adslot_id}&is_survey={is_survey}`
 
-  Your server must reply with HTTP 200 or they will retry up to 12 times in an hour. Enable reversal callbacks in the placement if you want chargebacks (`callback_type=chargeback`, `is_chargeback=1`, `transaction_id` prefixed with `r-`, negative amounts — from their publisher API docs).
-- **TODO:** I did not find an official signature / hash scheme on the public callback pages I checked. Goody’s `ayet` entry still uses a generic HMAC placeholder. Do not turn this on in production until Ayet confirms how to verify a postback. Set `AYET_SECRET` only after that is known, and update `server/config.js` / `server/lib/postback.js` to match.
+  Goody checks the `X-Ayetstudios-Security-Hash` header = HMAC-SHA256 of all query parameters sorted by name and URL-encoded (PHP `http_build_query` style, space as `+`; the URLSearchParams style also accepted), keyed with the API key. Missing or wrong header = HTTP 403. Goody credits `{payout_usd}` (publisher USD) at the 70% share, so $1 = 700 points; `{currency_amount}` is only logged. Chargebacks (`is_chargeback=1`, id `r-<original>`, negative amounts) take the points back from the original transaction. Each transaction is credited once; replays get HTTP 200 with `"idempotent": true`.
 
 ## Lootably
 
@@ -80,8 +82,22 @@ Always credit from the partner’s **publisher USD** field (BitLabs `RAW` / `VAL
 - What it is: survey (and offer) monetization. Publisher docs hub: [docs.theoremreach.com/publisher](https://docs.theoremreach.com/publisher). Go-live FAQ: [Publisher Go Live Checklist & FAQs](https://info.theoremreach.com/publisher-faqs/).
 - How to apply / go live: they review every app before it is set live. Questions: publishers@theoremreach.com. Go-live requests are “generally” answered within 3 business days.
 - What they require (from the go-live checklist): a properly working app or website (brand-new properties need extra vetting); a GDPR/CCPA-compliant privacy policy; **active consent** to the privacy policy and terms on the sign-up form (a checkbox the user must click — a line like “by clicking sign up you agree” is not enough, per that FAQ); a clear contact point on those pages; users must create an account to take surveys; a captcha or similar on sign-in / sign-up; and an in-app currency plus the ability to reward users. They also recommend (but do not require) phone or address checks.
-- How to plug into Goody: they have an Offerwall Integration Guide that covers entry URLs, callback configuration, and HMAC security ([publisher docs](https://docs.theoremreach.com/publisher)). Their FAQ says reward callbacks do **not** include reversals; reversals and bans go through an Event Webhook described at [theoremreach.com/docs/reporting](https://theoremreach.com/docs/reporting).
-- **TODO:** I could not open a public page that listed the exact callback parameter names or the HMAC formula. Goody’s `theoremreach` entry is a placeholder. Confirm the official callback URL, parameters, and signature in your publisher dashboard, then update the handler before enabling `THEOREMREACH_SECRET`. Planned URL shape: `https://goody.day/postback/theoremreach`.
+- Status: app 26008 created (not live yet), reversals in reward callback turned on.
+- Goody shows a **More surveys** card once `THEOREMREACH_SECRET` is set. It opens `https://theoremreach.com/respondent_entry/direct?api_key=<API key>&user_id=<Goody public id>&transaction_id=<new id per open>&hash=<signature>` (built by `GET /api/walls/theoremreach`; the hash is base64url HMAC-SHA1 of the link with the secret key, as their docs describe for signed entry links).
+- Render env: `THEOREMREACH_SECRET` = the app's secret key (Publisher dashboard → app details). `THEOREMREACH_API_KEY` is public and defaults to app 26008's key. Optional `THEOREMREACH_CALLBACK_BASE` (default `https://goody.day`), `THEOREMREACH_POSTBACK_IPS`.
+- Reward callback URL (app → Reward Callback). TheoremReach appends `hash` itself, plus `reversal=true` / `debug=true` when needed:
+
+  `https://goody.day/postback/theoremreach?user_id={user_id}&tx_id={tx_id}&reward={reward}&currency={reward_amount_in_dollars}`
+
+  Goody checks `hash == base64url(HMAC-SHA1(secret, "https://goody.day" + path and query exactly as received, up to "&hash="))` (also tries PUBLIC_BASE_URL and the request host). Bad or missing hash = HTTP 403. `debug=true` returns 200 and credits nothing. Goody credits the USD amount (`currency` / `reward_amount_in_dollars`) at the 70% share, so $1 = 700 points; set the app exchange rate to 700 so their wall shows the same numbers. `reversal=true` (same `tx_id`, negative amounts) takes the points back. `hash` must stay the last parameter.
+
+## RapidoReach
+
+- Status: app `YqyrVnOaFtt` created (pending approval).
+- Goody shows a **Survey hub** card once `RAPIDOREACH_APP_KEY` and `RAPIDOREACH_APP_SECRET` are set. It opens `https://www.rapidoreach.com/ofw/?userId=<uid>` where uid = `<Goody public id>-<App ID>-md5(<Goody public id>-<App ID>-<App Key>)`, built on the server by `GET /api/walls/rapidoreach`.
+- Render env: `RAPIDOREACH_APP_KEY` (App Key), `RAPIDOREACH_APP_SECRET` (App Secret, also called Transaction Key), optional `RAPIDOREACH_APP_ID` (default `YqyrVnOaFtt`) and `RAPIDOREACH_POSTBACK_IPS` (their dashboard lists 161.97.78.55, 173.212.227.149, 75.119.139.250, 75.119.139.251).
+- Callback URL (Apps → your app → Callback): `https://goody.day/postback/rapidoreach` (RapidoReach appends `transactionId`, `endUserId`, `status`/`cmd`, `amt`, `currencyAmt`, `offerHash`, `txnHash`, …).
+- Goody checks `txnHash == md5(transactionId + App Secret)` (required) and `offerHash == md5(transactionId + App Key)` (when sent). Bad hash = HTTP 403. `C` credits `amt` (publisher USD) at the 70% share ($1 = 700 points); `F`/`P` credit only if they carry a payout; `R` takes the points back. Success replies HTTP 200 with body `1`; failures reply non-200.
 
 ## Torox
 

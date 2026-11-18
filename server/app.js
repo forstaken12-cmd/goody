@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
@@ -7,7 +8,7 @@ const config = require('./config');
 const { openDb } = require('./db');
 const { creditFromPartner, ptsToUsd, usdToPts, money, isoNow } = require('./lib/money');
 const ledger = require('./lib/ledger');
-const { verifyAndParse, signGeneric, cpxWallUrl } = require('./lib/postback');
+const { verifyAndParse, signGeneric, cpxWallUrl, ayetWallUrl, theoremreachWallUrl, rapidoreachWallUrl } = require('./lib/postback');
 const auth = require('./lib/auth');
 const { createLimiter } = require('./lib/rateLimit');
 const { listOffers, findOffer } = require('./demo/catalog');
@@ -132,6 +133,10 @@ async function createApp(opts) {
     if (!result.ok) {
       throw Object.assign(new Error(result.reason || 'bad postback'), { http: result.http || 403, detail: result });
     }
+    if (result.fields.status === 'ignore') {
+      // Signed but nothing to credit (TheoremReach debug=true, unpaid RapidoReach screenouts).
+      return { ok: true, action: 'ignored', idempotent: false, fields: result.fields };
+    }
     const user = await auth.findByPublicId(db, result.fields.uid);
     if (!user) {
       throw Object.assign(new Error('unknown user'), { http: 400, code: 'NO_USER' });
@@ -237,7 +242,7 @@ async function createApp(opts) {
       contactEmail: contactAddress(cfg),
       oauth: oauth.providersStatus(cfg),
       turnstileSiteKey: turnstile.turnstileEnabled(cfg) ? cfg.turnstileSiteKey : null,
-      walls: { cpx: cpxReady() }
+      walls: wallsStatus()
     });
   });
 
@@ -525,18 +530,52 @@ async function createApp(opts) {
   }
 
   // ----- survey / offer walls -----
-  function cpxReady() {
-    const c = cfg.partners && cfg.partners.cpx;
+  // Each wall only switches on once its partner's secret env vars are set. Secrets stay on the
+  // server; the browser only gets the finished, signed link for the signed-in user.
+  function partnerOn(key) {
+    const c = cfg.partners && cfg.partners[key];
     return !!(c && c.enabled && c.secret);
   }
-  // The CPX survey wall link for the signed-in user. The security hash stays on the
-  // server; the browser only gets md5(ext_user_id + "-" + hash).
-  app.get('/api/walls/cpx', requireUser, requireTerms, (req, res) => {
-    if (!cpxReady()) return res.status(503).json({ error: 'Surveys are not switched on yet.' });
-    const c = cfg.partners.cpx;
-    const url = cpxWallUrl({ appId: c.appId || '38062', secret: c.secret, extUserId: req.user.public_id });
+  const WALLS = {
+    cpx: {
+      ready: () => partnerOn('cpx'),
+      build: (u) => cpxWallUrl({ appId: cfg.partners.cpx.appId || '38062', secret: cfg.partners.cpx.secret, extUserId: u.public_id })
+    },
+    ayet_surveys: {
+      ready: () => partnerOn('ayet') && !!cfg.partners.ayet.surveySlot,
+      build: (u) => ayetWallUrl({ kind: 'surveys', adSlot: cfg.partners.ayet.surveySlot, extUserId: u.public_id })
+    },
+    ayet_offers: {
+      ready: () => partnerOn('ayet') && !!cfg.partners.ayet.offerSlot,
+      build: (u) => ayetWallUrl({ kind: 'offers', adSlot: cfg.partners.ayet.offerSlot, extUserId: u.public_id })
+    },
+    theoremreach: {
+      ready: () => partnerOn('theoremreach') && !!cfg.partners.theoremreach.apiKey,
+      build: (u) => theoremreachWallUrl({
+        apiKey: cfg.partners.theoremreach.apiKey,
+        secret: cfg.partners.theoremreach.secret,
+        userId: u.public_id,
+        transactionId: 'g' + Date.now().toString(36) + crypto.randomBytes(6).toString('hex')
+      })
+    },
+    rapidoreach: {
+      ready: () => partnerOn('rapidoreach') && !!cfg.partners.rapidoreach.appKey && !!cfg.partners.rapidoreach.appId,
+      build: (u) => rapidoreachWallUrl({ userId: u.public_id, appId: cfg.partners.rapidoreach.appId, appKey: cfg.partners.rapidoreach.appKey })
+    }
+  };
+  function wallsStatus() {
+    const out = {};
+    for (const k of Object.keys(WALLS)) out[k] = WALLS[k].ready();
+    return out;
+  }
+  app.get('/api/walls/:wall', requireUser, requireTerms, (req, res) => {
+    const key = String(req.params.wall || '').toLowerCase();
+    const w = Object.prototype.hasOwnProperty.call(WALLS, key) ? WALLS[key] : null;
+    if (!w) return res.status(404).json({ error: 'Unknown wall.' });
+    if (!w.ready()) return res.status(503).json({ error: 'This wall is not switched on yet.' });
+    const partner = key.split('_')[0];
     res.set('Cache-Control', 'no-store');
-    res.json({ partner: 'cpx', name: c.name || 'CPX Research', url });
+    res.json({ partner: key, name: (cfg.partners[partner] && cfg.partners[partner].name) || partner, url: w.build(req.user) });
   });
 
   app.post('/api/auth/agree', sessionLimit, requireUser, async (req, res) => {

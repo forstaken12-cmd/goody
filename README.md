@@ -80,7 +80,7 @@ See **PARTNERS.md** for who to apply to, what they usually ask for, and the exac
 - A valid `DATABASE_URL` pointing at Postgres, and a plan for when free Render Postgres expires on 2026-12-11
 - `PUBLIC_BASE_URL=https://goody.day` if it is not already picked up from Render
 - An email provider (`MAIL_FROM` plus `BREVO_API_KEY`, which is preferred on Render because the free plan blocks outbound SMTP; or `SMTP_URL` / `SENDGRID_API_KEY`) so confirmation and reset links are actually sent
-- Real partner accounts and secrets (see PARTNERS.md). Confirm leftover official details for ayeT-Studios and TheoremReach.
+- Real partner accounts and secrets (see PARTNERS.md).
 - Real payout provider keys (PayPal, Tremendous, and/or ZBD). For Lightning, also set `BTC_USD` so the amount can be converted. Admin “mark sent” or “Approved, send manually” does not move money by itself.
 - Stronger anti-abuse (captcha, phone checks, VPN tools). TheoremReach in particular asks for a captcha or similar on signup.
 - A lawyer review of the Terms and Privacy Policy, and tax / identity handling for payouts
@@ -103,6 +103,6 @@ Age and Terms live in `server/lib/policy.js`: `MIN_AGE` (18, because Lootably re
 - `MAIL_FROM` and `BREVO_API_KEY` (preferred on Render; HTTP API). SMTP (`SMTP_URL` or `SMTP_HOST`+`SMTP_USER`+`SMTP_PASS`) and `SENDGRID_API_KEY` also work where outbound SMTP is allowed. If more than one is set, Brevo is used first.
 - Gift cards: `RELOADLY_CLIENT_ID`, `RELOADLY_CLIENT_SECRET`, `RELOADLY_ENV` (`sandbox` for TEST keys, `live` for LIVE keys; they must match), and `GIFT_CODE_KEY` (any long random text; locks saved codes; set once and keep it)
 - Payout keys, when you are ready: `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_ENV`; `TREMENDOUS_API_KEY`, `TREMENDOUS_CAMPAIGN_ID`, `TREMENDOUS_ENV`; `ZBD_API_KEY` or `ZEBEDEE_API_KEY`, plus `BTC_USD`
-- Partner secrets, when you are approved: `BITLABS_SECRET`, `ADGEM_POSTBACK_KEY`, `CPX_SECURITY_HASH` (+ `CPX_APP_ID`, default 38062), `TOROX_SECRET`, `LOOTABLY_POSTBACK_SECRET`, and later `AYET_SECRET` / `THEOREMREACH_SECRET` after you confirm official docs
+- Partner secrets, when you are approved: `BITLABS_SECRET`, `ADGEM_POSTBACK_KEY`, `CPX_SECURITY_HASH` (+ `CPX_APP_ID`, default 38062), `TOROX_SECRET`, `LOOTABLY_POSTBACK_SECRET`, `AYET_API_KEY` (ayeT surveywall + offerwall), `THEOREMREACH_SECRET` (+ optional `THEOREMREACH_API_KEY`), `RAPIDOREACH_APP_KEY` + `RAPIDOREACH_APP_SECRET` (+ optional `RAPIDOREACH_APP_ID`). Each wall card only shows once its keys are set
 
 `ADMIN_PASSWORD` should already be set on the live service. Leave `DEMO_PARTNER` unset (or anything other than `1`) so practice offers stay off. `DEMO_PARTNER_SECRET` is only needed when you turn the demo partner on locally.

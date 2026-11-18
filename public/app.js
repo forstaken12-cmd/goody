@@ -838,28 +838,39 @@
     const b = e.target.closest('[data-offer]');
     if (b) openOffer(b.getAttribute('data-offer'));
   }
-  // ----- CPX Research survey wall -----
+  // ----- Survey and offer walls (CPX, TheoremReach, RapidoReach, ayeT) -----
+  const WALL_INFO = {
+    cpx: { title: 'Surveys', by: 'CPX Research', loading: 'Loading surveys…' },
+    theoremreach: { title: 'Surveys', by: 'TheoremReach', loading: 'Loading surveys…' },
+    rapidoreach: { title: 'Surveys', by: 'RapidoReach', loading: 'Loading surveys…' },
+    ayet_surveys: { title: 'Surveys', by: 'ayeT-Studios', loading: 'Loading surveys…' },
+    ayet_offers: { title: 'Offers', by: 'ayeT-Studios', loading: 'Loading offers…' }
+  };
   let wallsCfg = {};
   function applyWalls(walls) {
     wallsCfg = walls || {};
-    document.querySelectorAll('.wall-card[data-wall="cpx"]').forEach((el) => { el.hidden = !wallsCfg.cpx; });
+    document.querySelectorAll('.wall-card[data-wall]').forEach((el) => { el.hidden = !wallsCfg[el.getAttribute('data-wall')]; });
   }
   async function openWall(name) {
-    if (name !== 'cpx') return;
+    const info = WALL_INFO[name];
+    if (!info) return;
     const ov = $('wall-overlay');
     const frame = $('wall-frame');
-    $('wall-loading').textContent = 'Loading surveys…';
+    $('wall-title').textContent = info.title;
+    $('wall-by').textContent = 'By ' + info.by + '. Points show up in History.';
+    frame.title = info.by + ' ' + info.title.toLowerCase();
+    $('wall-loading').textContent = info.loading;
     $('wall-loading').hidden = false;
     frame.hidden = true;
     ov.classList.add('show');
     document.body.style.overflow = 'hidden';
     try {
-      const data = await api('/api/walls/cpx');
+      const data = await api('/api/walls/' + encodeURIComponent(name));
       frame.onload = () => { $('wall-loading').hidden = true; };
       frame.src = data.url;
       frame.hidden = false;
     } catch (e) {
-      $('wall-loading').textContent = e.message || 'Surveys could not load. Try again soon.';
+      $('wall-loading').textContent = e.message || 'This wall could not load. Try again soon.';
     }
   }
   function closeWall() {

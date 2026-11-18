@@ -89,9 +89,8 @@ const config = {
 
 /**
  * Partner postback configs.
- * BitLabs, AdGem, CPX Research, Lootably, and Torox use names and signatures
- * checked against their public docs. Ayet Studios and TheoremReach are stubs
- * until official signature details are confirmed — see PARTNERS.md.
+ * Names and signatures are checked against each partner's docs — see PARTNERS.md.
+ * A partner is only switched on (wall shown, postbacks accepted) once its secret env vars are set.
  */
 config.partners = {
   demo: {
@@ -131,10 +130,16 @@ config.partners = {
 
   ayet: {
     name: 'ayeT-Studios',
-    secret: process.env.AYET_SECRET || '',
-    style: 'generic',
-    enabled: !!process.env.AYET_SECRET,
-    notes: 'TODO: public callback docs list macros such as {payout_usd}, {transaction_id}, {external_identifier}, {callback_type}, {is_chargeback}, but I did not find an official signature scheme on the pages checked. Confirm with Ayet before enabling in production. Generic HMAC-SHA256 is only a placeholder.'
+    // Publisher API key (ayeT dashboard → Settings). Signs the X-Ayetstudios-Security-Hash header.
+    secret: envStr('AYET_API_KEY') || envStr('AYET_SECRET'),
+    placementId: envStr('AYET_PLACEMENT_ID') || '26403',
+    surveySlot: envStr('AYET_SURVEYWALL_SLOT') || '31452',
+    offerSlot: envStr('AYET_OFFERWALL_SLOT') || '31454',
+    style: 'ayet',
+    label: 'ayeT-Studios',
+    enabled: !!(envStr('AYET_API_KEY') || envStr('AYET_SECRET')),
+    allowedIps: String(process.env.AYET_POSTBACK_IPS || '').split(',').map((x) => x.trim()).filter(Boolean),
+    notes: 'Web surveywall surveys.ayet.io/surveys?adSlot&external_identifier, offerwall offerwall.ayet.io/offers?adSlot&externalIdentifier. Callback: header X-Ayetstudios-Security-Hash = HMAC-SHA256(sorted query string, publisher API key). Credit payout_usd; is_chargeback=1 with transaction_id "r-<original>" claws back.'
   },
   torox: {
     name: 'Torox',
@@ -154,10 +159,31 @@ config.partners = {
   },
   theoremreach: {
     name: 'TheoremReach',
-    secret: process.env.THEOREMREACH_SECRET || '',
-    style: 'generic',
-    enabled: !!process.env.THEOREMREACH_SECRET,
-    notes: 'TODO: TheoremReach documents HMAC-secured offerwall callbacks, but I could not confirm exact parameter names or the HMAC formula from the public pages I could open. Confirm official docs in the publisher dashboard before enabling.'
+    secret: envStr('THEOREMREACH_SECRET'),
+    // The API key is public (it goes in the survey wall link). App 26008.
+    apiKey: envStr('THEOREMREACH_API_KEY') || 'b02a2f63e99174f8bddf801018dd',
+    style: 'theoremreach',
+    label: 'TheoremReach survey',
+    enabled: !!envStr('THEOREMREACH_SECRET'),
+    // TheoremReach signs the URL it called; check it against the live domain too.
+    callbackBases: (envStr('THEOREMREACH_CALLBACK_BASE') || 'https://goody.day').split(',').map((x) => x.trim()).filter(Boolean),
+    allowedIps: String(process.env.THEOREMREACH_POSTBACK_IPS || '').split(',').map((x) => x.trim()).filter(Boolean),
+    notes: 'Wall: theoremreach.com/respondent_entry/direct?api_key&user_id&transaction_id (+ hash). Callback hash = base64url(HMAC-SHA1(secret, callback URL before &hash=)). reversal=true claws back the same tx_id; debug=true is ignored. Credit {currency} / {reward_amount_in_dollars} (USD).'
+  },
+  rapidoreach: {
+    name: 'RapidoReach',
+    // App Secret (also called Transaction Key) signs txnHash; App Key signs offerHash and the wall UID.
+    secret: envStr('RAPIDOREACH_APP_SECRET'),
+    appKey: envStr('RAPIDOREACH_APP_KEY'),
+    appId: envStr('RAPIDOREACH_APP_ID') || 'YqyrVnOaFtt',
+    style: 'rapidoreach',
+    source: 'survey',
+    label: 'RapidoReach survey',
+    successBody: '1',
+    enabled: !!(envStr('RAPIDOREACH_APP_SECRET') && envStr('RAPIDOREACH_APP_KEY')),
+    // RapidoReach dashboard lists 161.97.78.55, 173.212.227.149, 75.119.139.250, 75.119.139.251.
+    allowedIps: String(process.env.RAPIDOREACH_POSTBACK_IPS || '').split(',').map((x) => x.trim()).filter(Boolean),
+    notes: 'Wall: rapidoreach.com/ofw/?userId=<uid>-<appId>-md5(uid-appId-appKey). Callback GET: txnHash = md5(transactionId + App Secret), offerHash = md5(transactionId + App Key). status C credits amt (USD); F/P only if paid; R claws back.'
   }
 };
 
