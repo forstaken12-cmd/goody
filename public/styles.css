@@ -1134,3 +1134,16 @@ html.legal-page, body.legal-page {
   display: grid; place-items: center;
   font-size: 14px; font-weight: 600; color: var(--muted);
 }
+
+/* Recommended surveys (home) */
+.rec-zone { margin-bottom: 6px; }
+.rec-head { display: flex; align-items: center; justify-content: space-between; }
+.rec-head .see-all {
+  font: inherit; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; text-transform: none;
+  color: var(--mint-d); background: var(--mint-s); border: 0; border-radius: 999px; padding: 4px 10px; cursor: pointer;
+}
+.rec-note { margin: -2px 0 10px; }
+.rec-card .meta .by { white-space: nowrap; }
+.rec-card .tag.top { background: linear-gradient(180deg, #FFD36E, #F2A516); color: #fff; box-shadow: 0 4px 10px rgba(242, 165, 22, 0.28); }
+.rec-skel { height: 96px; margin-bottom: 10px; background: linear-gradient(110deg, #fff 35%, #F2F7F6 50%, #fff 65%); background-size: 200% 100%; animation: skel 1.4s linear infinite; }
+@keyframes skel { from { background-position: 100% 0; } to { background-position: -100% 0; } }

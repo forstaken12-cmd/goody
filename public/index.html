@@ -65,14 +65,11 @@
             <ul class="goals" id="goal-list"></ul>
           </div>
         </div>
-        <div class="feat-head">For you</div>
-        <article class="card compact offer-card wall-card" data-wall="cpx" id="wall-card-home" hidden>
-          <div class="prog-ring off tile-wrap"><div class="app-tile t-survey"><span class="tile-gloss"></span><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9"><rect x="6" y="3.5" width="12" height="17" rx="2.5" fill="#fff" stroke="none"/><path d="M9 3.5h6v2.6H9z" fill="#2A9FD8" stroke="none"/><path d="M9 11h6M9 14.5h4" stroke="#2A9FD8"/></svg></div></div>
-          <div class="offer-body"><h3>Survey wall</h3>
-            <div class="meta"><span class="tag new">Real pay</span>by CPX Research</div>
-            <div class="note">Share your opinion in short surveys. Points arrive when each one is done.</div></div>
-          <div class="offer-actions"><button type="button" class="go start-btn" data-wall="cpx">Open surveys</button></div>
-        </article>
+        <div class="rec-zone" id="rec-zone" hidden>
+          <div class="feat-head rec-head"><span>Recommended surveys</span><button type="button" class="see-all" id="rec-see-all">See all</button></div>
+          <p class="note rec-note" id="rec-note" hidden>New surveys show up throughout the day. Pick a wall to see what is open now.</p>
+          <div id="rec-list"><div class="rec-skel card compact"></div><div class="rec-skel card compact"></div></div>
+        </div>
                 <div id="feat-list"></div>
       </section>
 

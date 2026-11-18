@@ -8,6 +8,7 @@ const config = require('./config');
 const { openDb } = require('./db');
 const { creditFromPartner, ptsToUsd, usdToPts, money, isoNow } = require('./lib/money');
 const ledger = require('./lib/ledger');
+const { createRecommender } = require('./lib/recommend');
 const { verifyAndParse, signGeneric, cpxWallUrl, ayetWallUrl, theoremreachWallUrl, rapidoreachWallUrl } = require('./lib/postback');
 const auth = require('./lib/auth');
 const { createLimiter } = require('./lib/rateLimit');
@@ -578,6 +579,31 @@ async function createApp(opts) {
     res.json({ partner: key, name: (cfg.partners[partner] && cfg.partners[partner].name) || partner, url: w.build(req.user) });
   });
 
+  // ----- recommended surveys (home screen) -----
+  const recommender = opts.recommender || createRecommender(cfg, { fetchFn: opts.surveyFetch, timeoutMs: opts.surveyTimeoutMs });
+  function visitorInfo(req) {
+    const h = (n) => String(req.get(n) || '').trim();
+    const ip = (h('cf-connecting-ip') || String(req.ip || '')).replace(/^::ffff:/, '');
+    const country = h('cf-ipcountry').toUpperCase();
+    return {
+      ip: /^[0-9a-f.:]+$/i.test(ip) && ip.length <= 45 ? ip : '',
+      userAgent: h('user-agent').slice(0, 400),
+      language: h('accept-language').slice(0, 100),
+      city: h('cf-ipcity').slice(0, 80),
+      country: /^[A-Z]{2}$/.test(country) && country !== 'XX' && country !== 'T1' ? country : ''
+    };
+  }
+  app.get('/api/surveys/recommended', requireUser, requireTerms, async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      const out = await recommender.forUser(req.user, visitorInfo(req), wallsStatus());
+      res.json({ surveys: out.surveys, walls: out.walls });
+    } catch (e) {
+      console.warn('Recommended surveys failed | ' + (e && e.name));
+      res.json({ surveys: [], walls: Object.keys(wallsStatus()).filter((k) => wallsStatus()[k] && k !== 'ayet_offers') });
+    }
+  });
+
   app.post('/api/auth/agree', sessionLimit, requireUser, async (req, res) => {
     try {
       const body = req.body || {};
@@ -864,13 +890,26 @@ async function createApp(opts) {
     return list.includes(ip);
   }
 
+  // One log line per partner postback: partner, HTTP code, outcome or reason, transaction id.
+  // Never the query string, hashes or secrets.
+  function logPostback(key, code, what, query) {
+    const q = query || {};
+    const raw = q.transactionId || q.tx_id || q.trans_id || q.transaction_id || q.txid || q.tx || q.offerInvitationId || '';
+    const tx = String(raw).replace(/[^A-Za-z0-9._:-]/g, '').slice(0, 64) || '-';
+    const k = String(key).replace(/[^a-z0-9_-]/gi, '').slice(0, 24) || '-';
+    const msg = 'Postback | partner=' + k + ' | http=' + code + ' | ' + String(what || '').slice(0, 80) + ' | tx=' + tx;
+    if (code >= 400) console.warn(msg); else console.log(msg);
+  }
+
   async function handlePostback(req, res) {
     const key = String(req.params.partner || '').toLowerCase();
+    const query = Object.assign({}, req.query, req.body);
     try {
       if (!postbackIpAllowed(cfg.partners[key], req)) {
         throw Object.assign(new Error('ip not allowed'), { http: 403 });
       }
-      const out = await ingest({ partnerKey: key, req, query: Object.assign({}, req.query, req.body) });
+      const out = await ingest({ partnerKey: key, req, query });
+      logPostback(key, 200, 'action=' + out.action + (out.idempotent ? ' (repeat)' : ''), query);
       const partnerCfg = cfg.partners[key];
       if (partnerCfg && partnerCfg.successBody === '1') {
         res.status(200).type('text/plain').send('1');
@@ -879,6 +918,7 @@ async function createApp(opts) {
       res.status(200).json({ ok: true, action: out.action, idempotent: out.idempotent });
     } catch (e) {
       const code = e.http || 400;
+      logPostback(key, code, 'reason=' + (e && e.message), query);
       const partnerCfg = cfg.partners[key];
       if (partnerCfg && partnerCfg.successBody === '1' && code !== 403 && code !== 404) {
         // Still tell partners it failed clearly; they retry unless they get "1".

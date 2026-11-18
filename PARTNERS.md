@@ -121,3 +121,16 @@ Goody ships with a fake offer catalog and signed demo postbacks so you can try t
 3. Use each partner’s test / sandbox postback tool first.
 4. Watch the ledger in `/admin` and confirm a test user is paid, then reversed, correctly.
 5. Turn off any partner “test mode” before real users arrive.
+
+## Recommended surveys (home screen)
+
+`GET /api/surveys/recommended` (signed-in users only) asks each switched-on partner that has a documented per-user survey list API, merges the results, sorts by points per minute, and returns up to 6 (the first one is the "Top pick"). Results are cached per user for 3 minutes; each partner call times out after 3.5 s and failures are logged as `Survey list failed | partner=… | timeout/HTTP nnn` and otherwise ignored.
+
+- CPX Research: `live-api.cpx-research.com/api/get-surveys.php` (app_id, ext_user_id, output_method=api, ip_user, user_agent, secure_hash). Points from `payout_publisher_usd` at the 70% share.
+- ayeT-Studios: `www.ayetstudios.com/surveys/surveywall_api/<surveywall slot>` (external_identifier, ip, user_agent, language). Points from `cpi`, which is in the adslot currency (set to 700 per $1).
+- RapidoReach: `POST www.rapidoreach.com/getallsurveys-api` with `X-RapidoReach-Api-Key`. RapidoReach requires the user's city and locale, so this only runs when Cloudflare sends `cf-ipcity` (turn on "Add visitor location headers" in Cloudflare → Rules → Transform Rules → Managed Transforms). Points from `CPI` (USD) at the 70% share.
+- TheoremReach: its Surveys API has to be enabled by their account manager, so Goody shows the TheoremReach wall as a card instead.
+
+Any ready partner without individual surveys shows as a wall card. If no surveys come back at all, the home zone shows the wall cards with "New surveys show up throughout the day."
+
+Every postback writes one log line: `Postback | partner=… | http=… | action=… or reason=… | tx=…` (never the query string, hashes or secrets).

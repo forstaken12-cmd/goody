@@ -254,6 +254,7 @@
     await refresh();
     checkTerms(me);
     await loadOffers();
+    loadRecommended().catch(() => {});
     requestAnimationFrame(moveTabInk);
   }
 
@@ -617,7 +618,7 @@
     if (tab === 'offers') loadOffers().catch(() => {});
     if (tab === 'history') loadHistory().catch(() => {});
     if (tab === 'cash') { renderMe(); loadCashouts().catch(() => {}); if (!giftShop) loadGiftShop(); }
-    if (tab === 'home') { renderMe(); loadOffers().catch(() => {}); }
+    if (tab === 'home') { renderMe(); loadOffers().catch(() => {}); loadRecommended().catch(() => {}); }
   }
 
   async function openOffer(id) {
@@ -873,6 +874,70 @@
       $('wall-loading').textContent = e.message || 'This wall could not load. Try again soon.';
     }
   }
+  // ----- Recommended surveys (home) -----
+  const REC_TILE = { cpx: ['t-survey', '#2A9FD8'], ayet: ['t-wall-ayet', '#F25A1F'], rapidoreach: ['t-wall-rr', '#0EA89A'], theoremreach: ['t-wall-tr', '#7C5CF0'] };
+  let recSurveys = [];
+  let recLoading = false;
+  function recTile(partner) {
+    const t = REC_TILE[partner] || REC_TILE.cpx;
+    return '<div class="prog-ring off tile-wrap"><div class="app-tile ' + t[0] + '"><span class="tile-gloss"></span>' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9"><rect x="6" y="3.5" width="12" height="17" rx="2.5" fill="#fff" stroke="none"/>' +
+      '<path d="M9 3.5h6v2.6H9z" fill="' + t[1] + '" stroke="none"/><path d="M9 11h6M9 14.5h4" stroke="' + t[1] + '"/></svg></div></div>';
+  }
+  function recCard(s, i) {
+    return '<article class="card compact offer-card rec-card' + (s.topPick ? ' rec' : '') + '">' + recTile(s.partner) +
+      '<div class="offer-body"><h3>' + escapeHtml(s.title) + '</h3>' +
+      '<div class="meta">' + (s.topPick ? '<span class="tag top">Top pick</span>' : '') +
+      '<span class="tag quick">' + Number(s.minutes) + ' min</span><span class="by">by ' + escapeHtml(s.partnerName) + '</span></div></div>' +
+      '<div class="offer-actions">' + ptsPill(s.points) +
+      '<button type="button" class="go start-btn" data-rec="' + i + '">Start</button></div></article>';
+  }
+  function recWallCard(name) {
+    const src = document.querySelector('#screen-offers .wall-card[data-wall="' + name + '"]');
+    if (!src) return '';
+    const el = src.cloneNode(true);
+    el.removeAttribute('id');
+    el.hidden = false;
+    el.classList.add('rec-wall');
+    return el.outerHTML;
+  }
+  async function loadRecommended() {
+    const zone = $('rec-zone');
+    if (!zone || recLoading || !signedIn) return;
+    const anyWall = Object.keys(wallsCfg || {}).some((k) => wallsCfg[k]);
+    if (!anyWall) { zone.hidden = true; return; }
+    zone.hidden = false;
+    recLoading = true;
+    try {
+      const data = await api('/api/surveys/recommended');
+      recSurveys = data.surveys || [];
+      const walls = data.walls || [];
+      let html = recSurveys.map(recCard).join('');
+      if (recSurveys.length < 3) html += walls.map(recWallCard).join('');
+      $('rec-note').hidden = recSurveys.length > 0;
+      $('rec-list').innerHTML = html;
+      zone.hidden = !html;
+    } catch (e) {
+      // Quiet: fall back to whatever walls are on.
+      const walls = Object.keys(wallsCfg || {}).filter((k) => wallsCfg[k] && k !== 'ayet_offers');
+      $('rec-list').innerHTML = walls.map(recWallCard).join('');
+      $('rec-note').hidden = false;
+      zone.hidden = !walls.length;
+    } finally {
+      recLoading = false;
+    }
+  }
+  $('rec-list').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-rec]');
+    if (!b) return;
+    const s = recSurveys[Number(b.getAttribute('data-rec'))];
+    if (s && /^https:\/\//.test(s.url)) {
+      window.open(s.url, '_blank', 'noopener');
+      toast('Survey opened', 'Points show up in History once ' + s.partnerName + ' confirms it.');
+    }
+  });
+  $('rec-see-all').addEventListener('click', () => showTab('offers'));
+
   function closeWall() {
     $('wall-overlay').classList.remove('show');
     document.body.style.overflow = '';
