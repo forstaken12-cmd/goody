@@ -46,6 +46,23 @@ function sendLegalPage(res, filename, cfg) {
   res.type('html').send(injectContact(withAge, contactAddress(cfg)));
 }
 
+// Bust /app.js and /styles.css so a cached copy cannot hide a new Home-screen zone.
+// Version is the files' mtimes, so a deploy changes the query without a manual bump.
+function assetVersion() {
+  return ['app.js', 'styles.css'].map((f) => {
+    try { return String(Math.floor(fs.statSync(path.join(PUBLIC, f)).mtimeMs)); } catch { return '0'; }
+  }).join('-');
+}
+function bustAssets(html) {
+  const v = encodeURIComponent(assetVersion());
+  return String(html).replace(/(href|src)="\/(styles\.css|app\.js)"/g, '$1="/$2?v=' + v + '"');
+}
+function sendAppPage(res, filename) {
+  const html = fs.readFileSync(path.join(PUBLIC, filename), 'utf8');
+  res.set('Cache-Control', 'no-store');
+  res.type('html').send(bustAssets(html));
+}
+
 
 function offerView(o, sharePct, pointUsd) {
   const parts = creditFromPartner(o.partnerUsd, sharePct, pointUsd);
@@ -595,12 +612,22 @@ async function createApp(opts) {
   }
   app.get('/api/surveys/recommended', requireUser, requireTerms, async (req, res) => {
     res.set('Cache-Control', 'no-store');
+    const fallbackWalls = () => Object.keys(wallsStatus()).filter((k) => wallsStatus()[k] && k !== 'ayet_offers');
+    const budget = opts.recommendTimeoutMs || (opts.surveyTimeoutMs || 3500) + 1500;
+    let timer;
     try {
-      const out = await recommender.forUser(req.user, visitorInfo(req), wallsStatus());
+      const out = await Promise.race([
+        recommender.forUser(req.user, visitorInfo(req), wallsStatus()),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(Object.assign(new Error('timeout'), { name: 'TimeoutError' })), budget);
+        })
+      ]);
       res.json({ surveys: out.surveys, walls: out.walls });
     } catch (e) {
       console.warn('Recommended surveys failed | ' + (e && e.name));
-      res.json({ surveys: [], walls: Object.keys(wallsStatus()).filter((k) => wallsStatus()[k] && k !== 'ayet_offers') });
+      res.json({ surveys: [], walls: fallbackWalls() });
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   });
 
@@ -1092,12 +1119,18 @@ async function createApp(opts) {
 
   app.get(['/terms', '/terms.html'], (_req, res) => sendLegalPage(res, 'terms.html', cfg));
   app.get(['/privacy', '/privacy.html'], (_req, res) => sendLegalPage(res, 'privacy.html', cfg));
-  app.get('/admin', (_req, res) => res.sendFile(path.join(PUBLIC, 'admin.html')));
-  app.use(express.static(PUBLIC));
+  app.get(['/', '/index.html'], (_req, res) => sendAppPage(res, 'index.html'));
+  app.get('/admin', (_req, res) => sendAppPage(res, 'admin.html'));
+  app.use(express.static(PUBLIC, {
+    setHeaders(res, filePath) {
+      if (/\.html$/i.test(filePath)) res.setHeader('Cache-Control', 'no-store');
+      else if (/\.(js|css)$/i.test(filePath)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  }));
   app.use((req, res, next) => {
     if (req.method !== 'GET') return next();
     if (req.path.startsWith('/api') || req.path.startsWith('/postback') || req.path.startsWith('/admin')) return next();
-    res.sendFile(path.join(PUBLIC, 'index.html'));
+    sendAppPage(res, 'index.html');
   });
 
   app.locals.db = db;
@@ -1114,4 +1147,4 @@ async function createApp(opts) {
   return app;
 }
 
-module.exports = { createApp, offerView, methodMinUsd, contactAddress, injectContact, escapeHtml };
+module.exports = { createApp, offerView, methodMinUsd, contactAddress, injectContact, escapeHtml, bustAssets, assetVersion };

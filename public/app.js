@@ -67,7 +67,8 @@
       method: opts.method || (opts.body ? 'POST' : 'GET'),
       credentials: 'same-origin',
       headers,
-      body: opts.body != null ? JSON.stringify(opts.body) : undefined
+      body: opts.body != null ? JSON.stringify(opts.body) : undefined,
+      signal: opts.timeoutMs ? AbortSignal.timeout(opts.timeoutMs) : undefined
     });
     const data = await res.json().catch(() => ({}));
     if (res.status === 401 && !opts.allow401) {
@@ -253,8 +254,9 @@
     hideAuth();
     await refresh();
     checkTerms(me);
-    await loadOffers();
+    // Do not wait on offers: a failure there used to skip the surveys zone.
     loadRecommended().catch(() => {});
+    await loadOffers().catch(() => {});
     requestAnimationFrame(moveTabInk);
   }
 
@@ -901,28 +903,42 @@
     el.classList.add('rec-wall');
     return el.outerHTML;
   }
+  function recWallNames() {
+    return Object.keys(wallsCfg || {}).filter((k) => wallsCfg[k] && k !== 'ayet_offers');
+  }
+  function recAnyWall() {
+    return Object.keys(wallsCfg || {}).some((k) => wallsCfg[k]);
+  }
+  function paintRecWalls() {
+    const html = recWallNames().map(recWallCard).join('');
+    if ($('rec-list')) $('rec-list').innerHTML = html;
+    if ($('rec-note')) $('rec-note').hidden = false;
+    return html;
+  }
   async function loadRecommended() {
     const zone = $('rec-zone');
     if (!zone || recLoading || !signedIn) return;
-    const anyWall = Object.keys(wallsCfg || {}).some((k) => wallsCfg[k]);
-    if (!anyWall) { zone.hidden = true; return; }
+    if (!recAnyWall()) { zone.hidden = true; return; }
+    // Show the zone immediately (wall cards at minimum) so a slow or failed
+    // partner fetch cannot leave it hidden or stuck on skeletons.
     zone.hidden = false;
+    if (!$('rec-list') || !$('rec-list').querySelector('.rec-card, .wall-card, .rec-wall')) {
+      paintRecWalls();
+    }
     recLoading = true;
     try {
-      const data = await api('/api/surveys/recommended');
+      const data = await api('/api/surveys/recommended', { timeoutMs: 8000 });
       recSurveys = data.surveys || [];
-      const walls = data.walls || [];
+      const walls = data.walls && data.walls.length ? data.walls : recWallNames();
       let html = recSurveys.map(recCard).join('');
       if (recSurveys.length < 3) html += walls.map(recWallCard).join('');
+      if (!html) html = recWallNames().map(recWallCard).join('');
       $('rec-note').hidden = recSurveys.length > 0;
-      $('rec-list').innerHTML = html;
-      zone.hidden = !html;
+      if (html) $('rec-list').innerHTML = html;
+      zone.hidden = false;
     } catch (e) {
-      // Quiet: fall back to whatever walls are on.
-      const walls = Object.keys(wallsCfg || {}).filter((k) => wallsCfg[k] && k !== 'ayet_offers');
-      $('rec-list').innerHTML = walls.map(recWallCard).join('');
-      $('rec-note').hidden = false;
-      zone.hidden = !walls.length;
+      paintRecWalls();
+      zone.hidden = false;
     } finally {
       recLoading = false;
     }

@@ -6,6 +6,8 @@ const assert = require('node:assert/strict');
 const { createApp } = require('../server/app');
 const { md5, theoremHash } = require('../server/lib/postback');
 const { rankSurveys, createRecommender } = require('../server/lib/recommend');
+const fs = require('fs');
+const path = require('path');
 
 const CPX_SECRET = 'cpx-rec-secret';
 const AYET_KEY = 'ayet-rec-key';
@@ -187,4 +189,72 @@ test('postbacks log partner, code, outcome and tx id, but never hashes or query 
     assert.ok(!/hash=|txnHash|\?/.test(l), l);
     assert.ok(!l.includes(TR_SECRET) && !l.includes(RR_SECRET), l);
   }
+});
+
+test('home HTML is not cached and points at versioned app.js and styles.css', async () => {
+  const res = await fetch(base + '/');
+  assert.equal(res.status, 200);
+  assert.match(String(res.headers.get('cache-control') || ''), /no-store/i);
+  const html = await res.text();
+  assert.match(html, /src="\/app\.js\?v=[0-9]+-[0-9]+"/);
+  assert.match(html, /href="\/styles\.css\?v=[0-9]+-[0-9]+"/);
+  const jsRes = await fetch(base + '/app.js');
+  assert.equal(jsRes.status, 200);
+  assert.match(String(jsRes.headers.get('cache-control') || ''), /max-age=31536000/);
+});
+
+test('a hung recommender times out, logs the failure, and still returns wall cards', async () => {
+  const logs = [];
+  const ow = console.warn;
+  console.warn = (m) => logs.push(String(m));
+  let hungApp, hungServer;
+  try {
+    hungApp = await createApp({
+      memory: true,
+      recommendTimeoutMs: 40,
+      recommender: { forUser: () => new Promise(() => {}) },
+      config: {
+        demoPartner: false, sharePct: 0.7, pointUsd: 0.001, adminPassword: 'x',
+        partners: {
+          cpx: { name: 'CPX Research', secret: CPX_SECRET, appId: '38062', style: 'cpx', source: 'survey', enabled: true, allowedIps: [] },
+          ayet: { name: 'ayeT-Studios', secret: AYET_KEY, style: 'ayet', surveySlot: '31452', offerSlot: '31454', enabled: true, allowedIps: [] },
+          theoremreach: { name: 'TheoremReach', secret: TR_SECRET, apiKey: 'k', style: 'theoremreach', enabled: true, callbackBases: ['https://goody.day'], allowedIps: [] },
+          rapidoreach: { name: 'RapidoReach', secret: RR_SECRET, appKey: RR_KEY, appId: 'YqyrVnOaFtt', style: 'rapidoreach', successBody: '1', enabled: true, allowedIps: [] }
+        }
+      }
+    });
+    hungServer = await listen(hungApp);
+    const hungBase = 'http://127.0.0.1:' + hungServer.address().port;
+    const res = await fetch(hungBase + '/api/auth/signup', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'hang@example.com', password: 'password12', agreeTerms: true, ageConfirm: true })
+    });
+    assert.equal(res.status, 200);
+    const ck = (res.headers.getSetCookie().join(';').match(/goody_session=([^;]+)/) || [])[1];
+    const t0 = Date.now();
+    const r = await fetch(hungBase + '/api/surveys/recommended', { headers: { cookie: 'goody_session=' + ck } });
+    const data = await r.json();
+    assert.ok(Date.now() - t0 < 1500);
+    assert.equal(r.status, 200);
+    assert.deepEqual(data.surveys, []);
+    assert.deepEqual(data.walls.sort(), ['ayet_surveys', 'cpx', 'rapidoreach', 'theoremreach']);
+    assert.ok(logs.some((l) => l.includes('Recommended surveys failed') && l.includes('TimeoutError')));
+    assert.ok(logs.every((l) => !l.includes(CPX_SECRET) && !l.includes(AYET_KEY) && !l.includes(RR_SECRET)));
+  } finally {
+    console.warn = ow;
+    if (hungApp && hungApp.close) await hungApp.close();
+    if (hungServer) await new Promise((r) => hungServer.close(r));
+  }
+});
+
+test('client always starts the zone after sign-in, with a timeout and wall-card fallback', () => {
+  const js = fs.readFileSync(path.join(__dirname, '../public/app.js'), 'utf8');
+  const after = js.slice(js.indexOf('async function afterSignIn()'), js.indexOf('async function refresh()'));
+  assert.match(after, /loadRecommended\(\)\.catch/);
+  assert.ok(after.indexOf('loadRecommended') < after.indexOf('await loadOffers'), 'zone must not wait on loadOffers');
+  assert.match(js, /api\('\/api\/surveys\/recommended', \{ timeoutMs: 8000 \}/);
+  const load = js.slice(js.indexOf('async function loadRecommended()'), js.indexOf("$('rec-list').addEventListener"));
+  assert.match(load, /zone\.hidden = false/);
+  assert.ok(!/zone\.hidden = !html/.test(load) && !/zone\.hidden = !walls/.test(load), 'zone must stay visible when walls are on');
+  assert.match(load, /paintRecWalls\(\)/);
 });
