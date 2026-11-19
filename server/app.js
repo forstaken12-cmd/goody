@@ -92,8 +92,11 @@ function offerView(o, sharePct, pointUsd) {
 }
 
 function methodMinUsd(cfg, method, isFirst) {
-  if (isFirst) return cfg.firstCashoutUsd;
-  return cfg.mins[method] || cfg.mins.lightning;
+  const floorRaw = Number(cfg.minCashoutUsd);
+  const floor = Number.isFinite(floorRaw) ? Math.max(0, floorRaw) : 5;
+  const specific = isFirst ? cfg.firstCashoutUsd : (cfg.mins && (cfg.mins[method] || cfg.mins.lightning));
+  const spec = Number(specific);
+  return Math.max(floor, Number.isFinite(spec) ? spec : 0);
 }
 
 function validDestination(method, dest) {
@@ -170,7 +173,8 @@ async function createApp(opts) {
       status: result.fields.status,
       note: partnerCfg.label || (query && query.note) || (result.body && result.body.note) || null,
       sharePct: cfg.sharePct,
-      pointUsd: cfg.pointUsd
+      pointUsd: cfg.pointUsd,
+      holdDays: cfg.earnHoldDays
     });
     return { ok: true, ...applied, fields: result.fields };
   }
@@ -252,6 +256,8 @@ async function createApp(opts) {
       sharePct: cfg.sharePct,
       pointUsd: cfg.pointUsd,
       firstCashoutUsd: cfg.firstCashoutUsd,
+      minCashoutUsd: cfg.minCashoutUsd,
+      earnHoldDays: cfg.earnHoldDays,
       mins: cfg.mins,
       tz: cfg.tz,
       mailEnabled: mailer.enabled,
@@ -657,6 +663,8 @@ async function createApp(opts) {
       appleLinked: !!user.apple_id,
       termsOk: policy.termsCurrent(user),
       firstCashoutUsd: cfg.firstCashoutUsd,
+      minCashoutUsd: cfg.minCashoutUsd,
+      earnHoldDays: cfg.earnHoldDays,
       balance: bal,
       availableUsd: ptsToUsd(bal.available, cfg.pointUsd),
       pendingUsd: ptsToUsd(bal.pending, cfg.pointUsd),
@@ -736,6 +744,7 @@ async function createApp(opts) {
       points: r.points,
       usd: r.user_usd,
       note: r.note,
+      availableAt: r.available_at || null,
       createdAt: r.created_at,
       updatedAt: r.updated_at
     }));
@@ -767,6 +776,49 @@ async function createApp(opts) {
     }
   });
 
+  async function approveCashout(row, note) {
+    if (!row) throw Object.assign(new Error('Not found'), { http: 404 });
+    if (row.status !== 'requested') {
+      throw Object.assign(new Error('This cash out is already ' + row.status), { http: 400 });
+    }
+    const result = await payouts.trySend(row, cfg, opts.payoutSendFns, { reloadly });
+    const now = isoNow();
+    if (result.sent) {
+      await db.run(
+        `UPDATE cashouts SET status = ?, admin_note = ?, payout_provider = ?, payout_mode = ?, payout_ref = ?, payout_error = ?, gift_txn_id = COALESCE(?, gift_txn_id), updated_at = ? WHERE id = ?`,
+        ['sent', result.note, result.provider, 'provider', result.ref || null, null, result.giftTxnId || null, now, row.id]
+      );
+      if (row.ledger_id) await ledger.settleDebit(db, row.ledger_id, 'paid');
+      if (result.cards) await saveCards(row.id, result.cards);
+    } else if (result.provider === 'reloadly' && result.refund) {
+      // Reloadly clearly said no, so no card was bought: give the points back.
+      console.warn('Reloadly order failed | cashout=' + row.id + ' | kind=' + result.kind + ' | ' + result.error);
+      await db.run('UPDATE cashouts SET payout_provider = ?, payout_mode = ?, payout_error = ? WHERE id = ?', ['reloadly', 'provider', result.error, row.id]);
+      await refundCashout(row, 'The gift card did not go through, so your points came back.');
+    } else if (result.provider === 'reloadly') {
+      // Not sure it went through (timeout, sign-in, empty wallet). Keep the
+      // points held and leave it "requested" so Approve can be pressed again;
+      // the same customIdentifier stops a double order.
+      console.warn('Reloadly order not finished | cashout=' + row.id + ' | kind=' + result.kind + ' | ' + result.error);
+      await db.run('UPDATE cashouts SET payout_provider = ?, payout_mode = ?, payout_error = ?, updated_at = ? WHERE id = ?', ['reloadly', 'provider', result.error, now, row.id]);
+    } else {
+      const adminNote = note || result.note || payouts.MANUAL_NOTE;
+      await db.run(
+        `UPDATE cashouts SET status = ?, admin_note = ?, payout_provider = ?, payout_mode = ?, payout_ref = ?, payout_error = ?, updated_at = ? WHERE id = ?`,
+        ['approved', adminNote, result.provider, 'manual', null, result.error || null, now, row.id]
+      );
+    }
+    const cashout = cashoutView(await db.get('SELECT * FROM cashouts WHERE id = ?', [row.id]));
+    const payout = Object.assign({}, result);
+    delete payout.cards;
+    return { cashout, payout };
+  }
+
+  async function maybeAutoApprove(row) {
+    if (!cfg.payoutAutoApprove) return { cashout: cashoutView(row) };
+    return approveCashout(row);
+  }
+
   // A picked Reloadly card: the price is the card's value, no email needed.
   async function giftCashout(req, res) {
     if (!payouts.reloadlyEnabled(cfg)) return res.status(400).json({ error: 'Gift cards are not ready yet.' });
@@ -784,6 +836,11 @@ async function createApp(opts) {
     if (!payouts.validGiftValue(product, value) || !brand.values.includes(value)) {
       return res.status(400).json({ error: 'Pick one of the amounts shown for ' + brand.name + '.' });
     }
+    const isFirst = !req.user.first_cashout_at;
+    const minUsd = methodMinUsd(cfg, 'gift', isFirst);
+    if (value + 1e-9 < minUsd) {
+      return res.status(400).json({ error: 'Cash out needs at least $' + minUsd.toFixed(2) + '.' });
+    }
     const pts = usdToPts(value, cfg.pointUsd);
     const bal = await ledger.balanceOf(db, req.user.id);
     if (pts > bal.available) {
@@ -791,7 +848,6 @@ async function createApp(opts) {
     }
     const usd = ptsToUsd(pts, cfg.pointUsd);
     const label = brand.name + ' $' + (Number.isInteger(value) ? value : value.toFixed(2));
-    const isFirst = !req.user.first_cashout_at;
     const debit = await ledger.holdDebit(db, { userId: req.user.id, source: 'cashout', points: pts, usd, note: 'gift · ' + label });
     const now = isoNow();
     const r = await db.run(
@@ -803,7 +859,8 @@ async function createApp(opts) {
       await db.run('UPDATE users SET first_cashout_at = ? WHERE id = ? AND first_cashout_at IS NULL', [now, req.user.id]);
     }
     const row = await db.get('SELECT * FROM cashouts WHERE id = ?', [r.lastInsertRowid]);
-    res.json({ ok: true, cashout: cashoutView(row), balance: await ledger.balanceOf(db, req.user.id) });
+    const approved = await maybeAutoApprove(row);
+    res.json({ ok: true, cashout: approved.cashout, balance: await ledger.balanceOf(db, req.user.id) });
   }
 
   app.post('/api/cashout', requireUser, requireTerms, cashLimit, async (req, res) => {
@@ -856,7 +913,8 @@ async function createApp(opts) {
         await db.run('UPDATE users SET first_cashout_at = ? WHERE id = ? AND first_cashout_at IS NULL', [now, req.user.id]);
       }
       const row = await db.get('SELECT * FROM cashouts WHERE id = ?', [r.lastInsertRowid]);
-      res.json({ ok: true, cashout: cashoutView(row), balance: await ledger.balanceOf(db, req.user.id) });
+      const approved = await maybeAutoApprove(row);
+      res.json({ ok: true, cashout: approved.cashout, balance: await ledger.balanceOf(db, req.user.id) });
     } catch (e) {
       sendError(res, e);
     }
@@ -1015,7 +1073,10 @@ async function createApp(opts) {
       mail: healthMail(mailer),
       payouts: payoutStatus(),
       reloadlyEnv: payouts.reloadlyEnabled(cfg) ? payouts.reloadlyEnv(cfg) : null,
-      demo: cfg.demoPartner
+      demo: cfg.demoPartner,
+      earnHoldDays: cfg.earnHoldDays,
+      minCashoutUsd: cfg.minCashoutUsd,
+      payoutAutoApprove: !!cfg.payoutAutoApprove
     });
   });
 
@@ -1048,39 +1109,8 @@ async function createApp(opts) {
   app.post('/admin/api/cashouts/:id/approve', requireAdmin, async (req, res) => {
     try {
       const row = await db.get('SELECT * FROM cashouts WHERE id = ?', [req.params.id]);
-      if (!row) return res.status(404).json({ error: 'Not found' });
-      if (row.status !== 'requested') return res.status(400).json({ error: 'This cash out is already ' + row.status });
-      const result = await payouts.trySend(row, cfg, opts.payoutSendFns, { reloadly });
-      const now = isoNow();
-      if (result.sent) {
-        await db.run(
-          `UPDATE cashouts SET status = ?, admin_note = ?, payout_provider = ?, payout_mode = ?, payout_ref = ?, payout_error = ?, gift_txn_id = COALESCE(?, gift_txn_id), updated_at = ? WHERE id = ?`,
-          ['sent', result.note, result.provider, 'provider', result.ref || null, null, result.giftTxnId || null, now, row.id]
-        );
-        if (row.ledger_id) await ledger.settleDebit(db, row.ledger_id, 'paid');
-        if (result.cards) await saveCards(row.id, result.cards);
-      } else if (result.provider === 'reloadly' && result.refund) {
-        // Reloadly clearly said no, so no card was bought: give the points back.
-        console.warn('Reloadly order failed | cashout=' + row.id + ' | kind=' + result.kind + ' | ' + result.error);
-        await db.run('UPDATE cashouts SET payout_provider = ?, payout_mode = ?, payout_error = ? WHERE id = ?', ['reloadly', 'provider', result.error, row.id]);
-        await refundCashout(row, 'The gift card did not go through, so your points came back.');
-      } else if (result.provider === 'reloadly') {
-        // Not sure it went through (timeout, sign-in, empty wallet). Keep the
-        // points held and leave it "requested" so Approve can be pressed again;
-        // the same customIdentifier stops a double order.
-        console.warn('Reloadly order not finished | cashout=' + row.id + ' | kind=' + result.kind + ' | ' + result.error);
-        await db.run('UPDATE cashouts SET payout_provider = ?, payout_mode = ?, payout_error = ?, updated_at = ? WHERE id = ?', ['reloadly', 'provider', result.error, now, row.id]);
-      } else {
-        const note = (req.body && req.body.note) || result.note || payouts.MANUAL_NOTE;
-        await db.run(
-          `UPDATE cashouts SET status = ?, admin_note = ?, payout_provider = ?, payout_mode = ?, payout_ref = ?, payout_error = ?, updated_at = ? WHERE id = ?`,
-          ['approved', note, result.provider, 'manual', null, result.error || null, now, row.id]
-        );
-      }
-      const cashout = cashoutView(await db.get('SELECT * FROM cashouts WHERE id = ?', [row.id]));
-      const payout = Object.assign({}, result);
-      delete payout.cards;
-      res.json({ ok: true, cashout, payout });
+      const out = await approveCashout(row, req.body && req.body.note);
+      res.json({ ok: true, cashout: out.cashout, payout: out.payout });
     } catch (e) {
       sendError(res, e);
     }

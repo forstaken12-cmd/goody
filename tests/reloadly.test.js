@@ -101,7 +101,9 @@ async function start(mode, extraCfg) {
       reloadlyClientId: 'test-id',
       reloadlyClientSecret: 'test-secret',
       reloadlyEnv: 'sandbox',
-      giftCodeKey: 'test-gift-key'
+      giftCodeKey: 'test-gift-key',
+      earnHoldDays: 0,
+      minCashoutUsd: 0
     }, extraCfg || {})
   });
   const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });

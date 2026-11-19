@@ -263,7 +263,7 @@
   async function refresh() {
     me = await api('/api/me');
     renderMe();
-    if (currentTab === 'history' || (me.balance && me.balance.pending > 0)) await loadHistory();
+    if (currentTab === 'history' || (me.balance && (me.balance.checking > 0 || me.balance.pending > 0))) await loadHistory();
     if (currentTab === 'cash') await loadCashouts();
     schedulePoll();
     return me;
@@ -271,8 +271,9 @@
 
   function schedulePoll() {
     clearTimeout(pollTimer);
-    const pending = me && me.balance && me.balance.pending > 0;
-    if (pending) pollTimer = setTimeout(() => refresh().catch(() => {}), 1600);
+    // Only poll quickly while a partner is still checking. Held points release on a timer of days, not seconds.
+    const checking = me && me.balance && me.balance.checking > 0;
+    if (checking) pollTimer = setTimeout(() => refresh().catch(() => {}), 1600);
   }
 
   /* sound / haptic / fx (same spirit as v2) */
@@ -353,10 +354,18 @@
     return '<div class="pts-pill">' + COIN + '<span>+' + fmt(pts) + '</span></div>';
   }
 
+  function cashoutMinUsd(method) {
+    const floor = (me && me.minCashoutUsd != null) ? Number(me.minCashoutUsd) : 5;
+    const first = !me || !me.firstCashoutDone;
+    const specific = first
+      ? ((me && me.firstCashoutUsd) || 0.5)
+      : (me && me.mins && me.mins[method]) || 0.8;
+    return Math.max(floor, Number(specific) || 0);
+  }
+
   function goalNeed() {
-    if (!me) return 500;
-    if (!me.firstCashoutDone) return Math.round(me.firstCashoutUsd / me.pointUsd);
-    return Math.round((me.mins && me.mins.lightning ? me.mins.lightning : 0.8) / me.pointUsd);
+    if (!me) return 3500;
+    return Math.round(cashoutMinUsd('gift') / (me.pointUsd || 0.001));
   }
 
   function paintPts(n) {
@@ -399,7 +408,21 @@
     const pl = $('pending-line');
     if (pend > 0) {
       pl.hidden = false;
-      pl.textContent = fmt(pend) + ' pts checking…';
+      const checking = me.balance.checking || 0;
+      const hold = Math.max(0, pend - checking);
+      const parts = [];
+      if (checking) parts.push(fmt(checking) + ' pts checking…');
+      if (hold > 0) {
+        const n = me.balance.nextReleasePoints || hold;
+        if (me.balance.nextReleaseAt) {
+          const when = new Date(me.balance.nextReleaseAt);
+          const t = when.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+          parts.push(fmt(n) + ' pts available ' + t + (n < hold ? ', then more later' : ''));
+        } else {
+          parts.push(fmt(hold) + ' pts pending');
+        }
+      }
+      pl.textContent = parts.join(' · ') || (fmt(pend) + ' pts pending');
     } else pl.hidden = true;
 
     $('streak-num').textContent = String(me.streak.current || 0);
@@ -422,15 +445,24 @@
         '</li>';
     }).join('');
 
-    const first = !me.firstCashoutDone;
-    $('first-callout').hidden = !first;
-    const mins = me.mins || { lightning: 0.8, paypal: 1.2, gift: 2 };
-    const firstUsd = me.firstCashoutUsd || 0.5;
-    $('min-ln').textContent = 'min ' + fmtUsd(first ? firstUsd : mins.lightning);
-    $('min-pp').textContent = 'min ' + fmtUsd(first ? firstUsd : mins.paypal);
-    $('min-gift').textContent = giftOn()
-      ? 'from ' + fmtUsd(Math.min.apply(null, giftShop.brands.map((b) => b.values[0])))
-      : 'min ' + fmtUsd(first ? firstUsd : mins.gift);
+    const minFloor = cashoutMinUsd('gift');
+    const laterGift = Math.max(me.minCashoutUsd != null ? Number(me.minCashoutUsd) : 5, (me.mins && me.mins.gift) || 2);
+    const firstCheaper = !me.firstCashoutDone && minFloor < laterGift - 1e-9;
+    const fc = $('first-callout');
+    if (firstCheaper) {
+      fc.hidden = false;
+      fc.textContent = 'Your first cash out only needs ' + fmtUsd(minFloor) + '.';
+    } else {
+      fc.hidden = false;
+      fc.textContent = 'Cash outs start at ' + fmtUsd(minFloor) + '. New points are held for ' + String((me.earnHoldDays != null) ? me.earnHoldDays : 3) + ' days before you can cash them out.';
+    }
+    $('min-ln').textContent = 'min ' + fmtUsd(cashoutMinUsd('lightning'));
+    $('min-pp').textContent = 'min ' + fmtUsd(cashoutMinUsd('paypal'));
+    const giftFloor = cashoutMinUsd('gift');
+    const shopMins = giftOn() ? giftShop.brands.map((b) => b.values.filter((v) => v + 1e-9 >= giftFloor)[0]).filter((v) => v != null) : [];
+    $('min-gift').textContent = shopMins.length
+      ? 'from ' + fmtUsd(Math.min.apply(null, shopMins))
+      : 'min ' + fmtUsd(giftFloor);
     renderWalletBtn();
   }
 
@@ -474,9 +506,10 @@
 
   function statusLabel(s) {
     if (s === 'pending') return 'Checking';
+    if (s === 'hold') return 'On hold';
     if (s === 'paid') return 'Paid';
     if (s === 'rejected') return 'Rejected';
-    if (s === 'requested') return 'Requested';
+    if (s === 'requested') return 'Under review';
     if (s === 'approved') return 'Approved';
     if (s === 'sent') return 'Sent';
     if (s === 'failed') return 'Points back';
@@ -496,7 +529,10 @@
       const t = when.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
       const title = e.note || (e.source === 'cashout' ? 'Cash out' : e.source);
       const sign = e.type === 'debit' ? '−' : '+';
-      const st = e.type === 'debit' && e.status === 'pending' ? 'requested' : e.status;
+      let st = e.type === 'debit' && e.status === 'pending' ? 'requested' : e.status;
+      if (e.type === 'credit' && e.status === 'pending' && e.availableAt && new Date(e.availableAt).getTime() > Date.now()) {
+        st = 'hold';
+      }
       return '<div class="hist-row">' +
         '<div><h3>' + escapeHtml(title) + '</h3><div class="when">' + t + '</div></div>' +
         '<div class="amt">' + sign + fmt(e.points) + ' pts</div>' +
@@ -554,12 +590,17 @@
     $('gift-amt-lbl').hidden = !b;
     let note = '';
     if (b) {
-      const can = b.values.filter((v) => giftPts(v) <= have);
+      const minUsd = cashoutMinUsd('gift');
+      const aboveMin = b.values.filter((v) => v + 1e-9 >= minUsd);
+      const can = aboveMin.filter((v) => giftPts(v) <= have);
       if (giftPick.value != null && !can.includes(giftPick.value)) giftPick.value = null;
       $('gift-amounts').innerHTML = can.map((v) =>
         '<button type="button" class="chip' + (v === giftPick.value ? ' on' : '') + '" data-gv="' + v + '">' + moneyLabel(v) + '</button>').join('');
-      if (!can.length) {
-        note = 'You need ' + fmt(giftPts(b.values[0]) - have) + ' more points for a ' + moneyLabel(b.values[0]) + ' ' + b.name + ' card.';
+      if (!aboveMin.length) {
+        note = 'Cash outs start at ' + moneyLabel(minUsd) + '.';
+        $('gift-amt-lbl').hidden = true;
+      } else if (!can.length) {
+        note = 'You need ' + fmt(giftPts(aboveMin[0]) - have) + ' more points for a ' + moneyLabel(aboveMin[0]) + ' ' + b.name + ' card.';
         $('gift-amt-lbl').hidden = true;
       }
       if (b.note) note = (note ? note + ' ' : '') + b.note;
@@ -583,9 +624,7 @@
       $('gift-pick').hidden = false;
       return;
     }
-    const minUsd = (!me || !me.firstCashoutDone)
-      ? (me && me.firstCashoutUsd) || 0.5
-      : (me.mins && me.mins[currentPay]) || 0.8;
+    const minUsd = cashoutMinUsd(currentPay);
     const minPts = Math.round(minUsd / ((me && me.pointUsd) || 0.001));
     const to = ($('pay-to').value || '').trim();
     const okTo = /@/.test(to) || /^ln/i.test(to);
@@ -696,13 +735,13 @@
     const b = me ? me.balance : { partnerUsd: 0, userUsd: 0, paidIn: 0, paidOut: 0, available: 0, pending: 0 };
     $('how-body').innerHTML =
       '<p>Partners pay us when you finish a task. You get ' + you + '%. We keep the rest.</p>' +
-      '<p>Points come only from those partner payments. After you ask to cash out, a person checks the request and sends it. Nothing is sent automatically yet.</p>' +
+      '<p>Points come only from those partner payments. New points are held for a few days, then you can cash them out once you reach the minimum. After you ask to cash out, a person reviews the request before anything is sent.</p>' +
       (me && me.demo ? '<p>Demo mode is on. Offers and payments here are pretend, so you can try the full path.</p>' : '') +
       '<div class="how-stats">Partners paid: ' + fmtUsd(b.partnerUsd) +
       '<br>Your share: ' + fmtUsd(b.userUsd) +
       '<br>Points in: ' + fmt(b.paidIn) +
       '<br>Cashed out: ' + fmt(b.paidOut) +
-      '<br>Checking now: ' + fmt(b.pending) +
+      '<br>Pending: ' + fmt(b.pending) +
       '<br>Your points now: ' + fmt(b.available) + '</div>' +
       '<p class="acct-contact">Contact us: <a data-contact-email href="mailto:' + escapeHtml(contactEmail) + '">' + escapeHtml(contactEmail) + '</a></p>';
   }

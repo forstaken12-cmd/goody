@@ -60,7 +60,7 @@ before(async () => {
     memory: true,
     surveyFetch: fakeFetch,
     config: {
-      demoPartner: false, sharePct: 0.7, pointUsd: 0.001, adminPassword: 'x',
+      demoPartner: false, sharePct: 0.7, pointUsd: 0.001, adminPassword: 'x', earnHoldDays: 0,
       partners: {
         cpx: { name: 'CPX Research', secret: CPX_SECRET, appId: '38062', style: 'cpx', source: 'survey', enabled: true, allowedIps: [] },
         ayet: { name: 'ayeT-Studios', secret: AYET_KEY, style: 'ayet', surveySlot: '31452', offerSlot: '31454', enabled: true, allowedIps: [] },

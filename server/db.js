@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS ledger (
   user_usd REAL NOT NULL DEFAULT 0,
   points INTEGER NOT NULL DEFAULT 0,
   note TEXT,
+  available_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE(partner, tx_id)
@@ -235,6 +236,7 @@ async function rebuildSqliteUsers(db) {
   );
   await db.exec('DROP TABLE users');
   await db.exec('ALTER TABLE users_new RENAME TO users');
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_ledger_release ON ledger(status, available_at)');
   await db.exec('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
 }
 
@@ -266,7 +268,9 @@ async function migrate(db) {
     ['cashouts', 'gift_value', 'REAL'],
     ['cashouts', 'gift_logo', 'TEXT'],
     ['cashouts', 'gift_txn_id', 'TEXT'],
-    ['cashouts', 'gift_code_enc', 'TEXT']
+    ['cashouts', 'gift_code_enc', 'TEXT'],
+    // When a pending credit becomes cash-out-able. Null means "as soon as it is paid" (existing balances).
+    ['ledger', 'available_at', 'TEXT']
   ];
   for (const [table, name, typ] of extras) {
     await addColumnIfMissing(db, table, name, typ);

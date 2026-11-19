@@ -20,7 +20,7 @@
 <body>
   <div id="admin">
     <h1>Goody admin</h1>
-    <p class="note">Look at users and the ledger. Approve or reject cash out requests. If a payout provider is not connected, approve will mark it “Approved, send manually.”</p>
+    <p class="note">Look at users and the ledger. Every cash out stays under review until you approve or reject it. Reject gives the points back. If a payout provider is not connected, approve will mark it “Approved, send manually.”</p>
     <form id="login" class="card" style="margin-top:16px;max-width:360px">
       <label class="field" for="pw">Password</label>
       <input class="ln" id="pw" type="password" autocomplete="current-password" />
@@ -92,7 +92,10 @@
       ]);
       const p = st.payouts || c.payouts || {};
       $('pay-status').innerHTML = '<h3>Payouts</h3>' +
-        '<p class="note">Database: ' + esc(st.db) + (st.mail ? ' · Email is on (' + esc(st.mail) + ')' : ' · Email is off (links go to the server log)') + '</p>' +
+        '<p class="note">Database: ' + esc(st.db) + (st.mail ? ' · Email is on (' + esc(st.mail) + ')' : ' · Email is off (links go to the server log)') +
+        (st.minCashoutUsd != null ? ' · Cash-out minimum $' + Number(st.minCashoutUsd).toFixed(2) : '') +
+        (st.earnHoldDays != null ? ' · ' + esc(st.earnHoldDays) + '-day point hold' : '') +
+        (st.payoutAutoApprove ? ' · Auto-approve is on' : '') + '</p>' +
         payLabel(p.paypal, 'PayPal Payouts') +
         payLabel(p.reloadly, 'Reloadly (gift cards' + (st.reloadlyEnv ? ', ' + esc(st.reloadlyEnv) : '') + ')') +
         payLabel(p.tremendous, 'Tremendous (gift cards)') +
@@ -101,7 +104,7 @@
         ['Id','User','Method','To','Points','Status','Note','When','Actions'],
         c.cashouts.map((r) => [
           r.id, r.user_id, r.method, r.destination, r.points,
-          r.status + (r.payout_mode === 'manual' && r.status === 'approved' ? ' · send manually' : ''),
+          cashStatus(r),
           (r.admin_note || '') + (r.payout_error && r.status === 'requested' ? ' · Last try: ' + r.payout_error + ' (safe to approve again)' : ''),
           r.created_at,
           actions(r)
@@ -115,6 +118,10 @@
         ['Id','User','Type','Status','Source','Partner','Tx','Points','Note','When'],
         l.entries.map((r) => [r.id, r.user_id, r.entry_type, r.status, r.source, r.partner || '', r.tx_id || '', r.points, r.note || '', r.created_at])
       );
+    }
+    function cashStatus(r) {
+      if (r.status === 'requested') return 'Awaiting approval';
+      return r.status + (r.payout_mode === 'manual' && r.status === 'approved' ? ' · send manually' : '');
     }
     function actions(r) {
       if (r.status === 'requested') return '<div class="row-actions"><button class="go small" data-a="approve" data-id="'+r.id+'">Approve</button><button class="go small ghost" data-a="reject" data-id="'+r.id+'">Reject</button></div>';

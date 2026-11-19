@@ -51,6 +51,8 @@ before(async () => {
       sharePct: 0.7,
       pointUsd: 0.001,
       firstCashoutUsd: 0.5,
+      earnHoldDays: 0,
+      minCashoutUsd: 0,
       publicBaseUrl: 'http://127.0.0.1',
       adminPassword: 'test-admin',
       partners: {

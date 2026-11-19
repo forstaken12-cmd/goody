@@ -45,6 +45,12 @@ const config = {
   sharePct: Math.min(0.9, Math.max(0.5, num('USER_SHARE', 0.7))),
   pointUsd: num('POINT_USD', 0.001),
   firstCashoutUsd: num('FIRST_CASHOUT_USD', 0.5),
+  // Floor for every cash out, including the first one. Method mins still apply if higher.
+  minCashoutUsd: Math.max(0, num('MIN_CASHOUT_USD', 5)),
+  // Partner credits stay pending this many days before they can be cashed out. 0 = immediate.
+  earnHoldDays: Math.max(0, num('EARN_HOLD_DAYS', 3)),
+  // When true, a new cash-out is approved (and sent, if keys are set) without an admin click.
+  payoutAutoApprove: /^(1|true|yes)$/i.test(envStr('PAYOUT_AUTO_APPROVE')),
   mins: {
     lightning: num('MIN_LIGHTNING_USD', 0.8),
     paypal: num('MIN_PAYPAL_USD', 1.2),

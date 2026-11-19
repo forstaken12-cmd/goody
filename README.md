@@ -40,10 +40,10 @@ Stop the server with Ctrl+C.
 2. We send an email to confirm the address when an email provider is configured. If it is not, the server logs the link and the app shows a friendly note. Password reset works the same way.
 3. Offers come from partners. In demo mode, the app serves a fake catalog and **signs postbacks** the same way a real partner would.
 4. When a task is finished, the partner calls `GET` or `POST /postback/:partner` with a user id, a transaction id, an amount in USD, a status, and a signature.
-5. The server checks the signature, applies the **user share** (default 70%), and writes an append-only **ledger** row. Status starts as `pending` (checking) and becomes `paid` or `rejected`. A reversal marks that credit rejected. The same transaction id will not be paid twice.
-6. The balance is **only** the sum of paid credits minus paid (or held) debits. The server never invents points.
-7. Cash out is a **request**. Email must be confirmed first. Points are held immediately. An admin approves or rejects it. Gift cards come from Reloadly: the user picks a brand and an amount they can afford, and after an admin approves, Goody buys the card and shows the code in the user's Requests list (the code is stored locked, never logged). If Reloadly clearly says no, the points come back; if it times out or the wallet is empty, the points stay held and the admin can press Approve again safely. If PayPal, Tremendous, or ZBD/ZEBEDEE keys are not set, approval is marked **“Approved, send manually.”** If keys are set, the matching adapter can send the payout. There is no automatic sending until those keys are present.
-8. The **first** cash out can be smaller (default **$0.50**). After that, the usual minimums apply.
+5. The server checks the signature, applies the **user share** (default 70%), and writes an append-only **ledger** row. A partner credit starts as `pending` and becomes cash-out-able (`paid`) after a **hold period** (default 3 days, `EARN_HOLD_DAYS`). A reversal during the hold removes the pending points. A reversal after release still claws the points back, and the available balance may go negative so later cash-outs are blocked. The same transaction id will not be paid twice. Existing balances (paid rows with no release time) stay available.
+6. The **available** balance is only paid credits that have cleared the hold, minus paid or held debits. Pending points (still checking, or still in the hold) are shown separately, with the next release time. The server never invents points.
+7. Cash out is a **request**. Email must be confirmed first. Points are reserved immediately so they cannot be spent twice. Every request stays **under review** until an admin approves or rejects it in `/admin` (reject returns the points). Gift cards come from Reloadly: the user picks a brand and an amount they can afford, and after an admin approves, Goody buys the card and shows the code in the user's Requests list (the code is stored locked, never logged). If Reloadly clearly says no, the points come back; if it times out or the wallet is empty, the points stay held and the admin can press Approve again safely. If PayPal, Tremendous, or ZBD/ZEBEDEE keys are not set, approval is marked **“Approved, send manually.”** If keys are set, the matching adapter can send the payout. Set `PAYOUT_AUTO_APPROVE=true` only if you want requests approved without an admin click (off by default).
+8. There is an overall cash-out minimum (default **$5**, `MIN_CASHOUT_USD`). Each method can have a higher minimum (`MIN_GIFT_USD`, `MIN_PAYPAL_USD`, `MIN_LIGHTNING_USD`). The first cash out can be smaller (`FIRST_CASHOUT_USD`, default $0.50) but never below `MIN_CASHOUT_USD`.
 9. When the demo partner is on, daily check-in, streaks, and daily goals also go through it as signed postbacks, so those gifts still come from a “partner payment,” not from thin air. Those gifts stay off when the demo partner is off.
 
 ### Database
@@ -69,8 +69,8 @@ See **PARTNERS.md** for who to apply to, what they usually ask for, and the exac
 - Postgres when `DATABASE_URL` is valid, sql.js fallback otherwise
 - Terms of Service and Privacy Policy (templates — have a lawyer review them)
 - 18+ age rule, agreement required at signup
-- Points ledger, pending → paid → rejected, playtime milestones, filters, history, streaks, first $0.50 cash out
-- Admin page, including payout status and “Approved, send manually” when providers are not connected
+- Points ledger, pending hold → paid → rejected, playtime milestones, filters, history, streaks, configurable cash-out minimum (default $5) and first-cash-out floor
+- Admin page, including payout approval/rejection, payout status, and “Approved, send manually” when providers are not connected
 - Payout adapters ready for PayPal Payouts, Reloadly gift cards, Tremendous, and ZBD / ZEBEDEE (not called unless keys are set)
 - Signed, idempotent postbacks and reversals, including Lootably and Torox verifiers from their public docs
 - Basic rate limits and a device-fingerprint note
@@ -104,5 +104,11 @@ Age and Terms live in `server/lib/policy.js`: `MIN_AGE` (18, because Lootably re
 - Gift cards: `RELOADLY_CLIENT_ID`, `RELOADLY_CLIENT_SECRET`, `RELOADLY_ENV` (`sandbox` for TEST keys, `live` for LIVE keys; they must match), and `GIFT_CODE_KEY` (any long random text; locks saved codes; set once and keep it)
 - Payout keys, when you are ready: `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_ENV`; `TREMENDOUS_API_KEY`, `TREMENDOUS_CAMPAIGN_ID`, `TREMENDOUS_ENV`; `ZBD_API_KEY` or `ZEBEDEE_API_KEY`, plus `BTC_USD`
 - Partner secrets, when you are approved: `BITLABS_SECRET`, `ADGEM_POSTBACK_KEY`, `CPX_SECURITY_HASH` (+ `CPX_APP_ID`, default 38062), `TOROX_SECRET`, `LOOTABLY_POSTBACK_SECRET`, `AYET_API_KEY` (ayeT surveywall + offerwall), `THEOREMREACH_SECRET` (+ optional `THEOREMREACH_API_KEY`), `RAPIDOREACH_APP_KEY` + `RAPIDOREACH_APP_SECRET` (+ optional `RAPIDOREACH_APP_ID`). Each wall card only shows once its keys are set
+
+These have safe defaults, and you only need to set them to change the default behavior:
+
+- `EARN_HOLD_DAYS` — days before partner points can be cashed out (default `3`; set `0` locally if you want instant cash-outs in demo mode)
+- `MIN_CASHOUT_USD` — overall cash-out floor (default `5`). Method mins (`MIN_GIFT_USD`, `MIN_PAYPAL_USD`, `MIN_LIGHTNING_USD`) and `FIRST_CASHOUT_USD` still apply when they are higher.
+- `PAYOUT_AUTO_APPROVE` — default off. If set to `true` or `1`, a new cash-out is approved (and sent, if keys are set) without an admin click.
 
 `ADMIN_PASSWORD` should already be set on the live service. Leave `DEMO_PARTNER` unset (or anything other than `1`) so practice offers stay off. `DEMO_PARTNER_SECRET` is only needed when you turn the demo partner on locally.

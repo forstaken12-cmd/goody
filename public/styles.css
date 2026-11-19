@@ -856,10 +856,10 @@ input[type=range] { width: 100%; accent-color: var(--coral); }
   text-align: right;
   justify-self: end;
 }
-.st-pill.pending, .st-pill.checking { background: #FFF3D4; color: #9A6A00; }
+.st-pill.pending, .st-pill.checking, .st-pill.hold { background: #FFF3D4; color: #9A6A00; }
 .st-pill.paid, .st-pill.sent, .st-pill.approved { background: var(--mint-s); color: var(--mint-d); }
 .st-pill.rejected { background: #FDE7E4; color: var(--coral); }
-.st-pill.requested { background: #EEF1F0; color: var(--muted); }
+.st-pill.requested { background: #E8F0FF; color: #2C4C8A; }
 
 .miles { list-style: none; margin: 12px 0; text-align: left; }
 .miles li {

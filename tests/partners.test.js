@@ -79,6 +79,8 @@ before(async () => {
       sharePct: 0.7,
       pointUsd: 0.001,
       adminPassword: 'test-admin',
+      earnHoldDays: 0,
+      minCashoutUsd: 0,
       partners: {
         cpx: { name: 'CPX Research', secret: '', style: 'cpx', enabled: false },
         ayet: { name: 'ayeT-Studios', secret: AYET_KEY, style: 'ayet', label: 'ayeT-Studios', surveySlot: '31452', offerSlot: '31454', enabled: true, allowedIps: [] },

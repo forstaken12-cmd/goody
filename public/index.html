@@ -130,7 +130,7 @@
         <p class="section-lead">Every task, with how it ended.</p>
         <div class="chip-row" id="hist-filter">
           <button class="chip on" data-st="all">All</button>
-          <button class="chip" data-st="pending">Checking</button>
+          <button class="chip" data-st="pending">Pending</button>
           <button class="chip" data-st="paid">Paid</button>
           <button class="chip" data-st="rejected">Rejected</button>
         </div>
@@ -139,16 +139,16 @@
 
       <section class="screen" id="screen-cash" data-tab="cash">
         <h2 class="section-title">Cash out</h2>
-        <div class="callout" id="first-callout" hidden>Your first cash out only needs $0.50.</div>
+        <div class="callout" id="first-callout" hidden>Cash outs start at $5.00. New points are held for 3 days before you can cash them out.</div>
         <div class="card compact" style="text-align:center;margin-bottom:12px">
           <div class="balance-pts" id="cash-pts" style="font-size:32px"><span id="cash-num">0</span><span class="unit">pts</span></div>
           <div class="note" id="cash-usd">≈ $0.00</div>
         </div>
         <div class="card">
           <h3>Pick a way</h3>
-          <button class="pay-opt on" data-pay="lightning" id="pay-lightning"><span>Bitcoin</span><span class="min" id="min-ln">min $0.50</span></button>
-          <button class="pay-opt" data-pay="paypal" id="pay-paypal"><span>PayPal</span><span class="min" id="min-pp">min $0.50</span></button>
-          <button class="pay-opt" data-pay="gift" id="pay-gift"><span>Gift card</span><span class="min" id="min-gift">min $0.50</span></button>
+          <button class="pay-opt on" data-pay="lightning" id="pay-lightning"><span>Bitcoin</span><span class="min" id="min-ln">min $5.00</span></button>
+          <button class="pay-opt" data-pay="paypal" id="pay-paypal"><span>PayPal</span><span class="min" id="min-pp">min $5.00</span></button>
+          <button class="pay-opt" data-pay="gift" id="pay-gift"><span>Gift card</span><span class="min" id="min-gift">min $5.00</span></button>
           <div id="gift-pick" hidden>
             <div id="gift-shop" hidden>
               <p class="field">Pick a card</p>

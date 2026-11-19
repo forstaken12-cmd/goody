@@ -50,6 +50,8 @@ before(async () => {
       sharePct: 0.7,
       pointUsd: 0.001,
       firstCashoutUsd: 0.5,
+      earnHoldDays: 0,
+      minCashoutUsd: 0,
       adminPassword: 'test-admin',
       partners: {
         cpx: { name: 'CPX Research', secret: CPX_SECRET, appId: '38062', style: 'cpx', source: 'survey', label: 'CPX Research survey', enabled: true, allowedIps: [] }
